@@ -1,8 +1,9 @@
+from typing import Optional   # <-- NEU
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import BigInteger, Integer, String, ForeignKey
-from typing import Optional
-from .user import Base
-from .document import Document
+from app.models.user import Base
+from app.models.document import Document
 
 class DocumentVersion(Base):
     __tablename__ = "document_versions"

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Dashboard</h2>
+
+<form class="inline" method="get" action="/">
+  <input type="text" name="q" placeholder="Suche..." value="{{ q }}">
+  <button type="submit">Suchen</button>
+</form>
+
+<form class="inline" method="post" action="/upload-web" enctype="multipart/form-data" style="margin:12px 0;">
+  <input type="file" name="file" required>
+  <button type="submit">Hochladen</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Größe</th>
+      <th>SHA256</th>
+      <th>Aktionen</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in items %}
+    <tr>
+      <td>{{ f.name }}</td>
+      <td>{{ f.size }}</td>
+      <td title="{{ f.sha256 }}">{{ f.sha256 }}</td>
+      <td><a href="/delete/{{ f.id }}">Löschen</a></td>
+    </tr>
+    {% endfor %}
+    {% if not items %}
+    <tr><td colspan="4" class="muted">Keine Dateien</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<p>Gesamt: {{ total }}</p>
+{% endblock %}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{{ title or "Dokumentenmanager" }}</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+      header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+      nav a { margin-right: 12px; }
+      table { width:100%; border-collapse: collapse; }
+      th, td { border-bottom:1px solid #ddd; padding:8px; text-align:left; }
+      .error { color:crimson; margin:8px 0; }
+      .muted { color:#666; }
+      input, button { padding:8px; }
+      form.inline { display:flex; gap:8px; align-items:center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 style="margin:0">Dokumentenmanager</h1>
+      <nav>
+        {% if user %}
+          <span class="muted">Eingeloggt: {{ user.email }}</span>
+          <a href="/logout">Logout</a>
+        {% else %}
+          <a href="/login">Login</a>
+          <a href="/register">Registrieren</a>
+        {% endif %}
+      </nav>
+    </header>
+
+    {% block content %}{% endblock %}
+  </body>
+</html>
