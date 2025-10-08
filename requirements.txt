@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+SQLAlchemy>=2.0
+pydantic>=2.0
+pydantic-settings
+PyJWT
+passlib[bcrypt]
+aiofiles
+python-multipart
+pymysql
+python-dotenv
