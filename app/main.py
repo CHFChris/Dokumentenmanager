@@ -25,4 +25,5 @@ app.include_router(auth_routes.router)
 app.include_router(files_routes.router)
 
 # WEB
+from app.web.routes_web import router as web_router
 app.include_router(web_router)

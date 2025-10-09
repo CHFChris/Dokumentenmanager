@@ -1,0 +1,73 @@
+# =====================
+# Python / FastAPI Backend
+# =====================
+
+# Virtuelle Umgebung
+.venv/
+venv/
+env/
+
+# Bytecode und Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build- und Dist-Verzeichnisse
+build/
+dist/
+*.egg-info/
+
+# SQLite / temporäre DB-Dateien
+*.db
+*.sqlite3
+
+# Logs & temporäre Dateien
+*.log
+*.tmp
+*.bak
+*.swp
+
+# VSCode / PyCharm
+.vscode/
+.idea/
+
+# Betriebssystem-spezifisch
+.DS_Store
+Thumbs.db
+
+# =====================
+# ENV / Secrets / Config
+# =====================
+
+# ENV-Dateien mit Passwörtern, Keys, DB-Zugang
+.env
+.env.*
+!*.example    # darf bleiben (z. B. .env.example als Vorlage)
+
+# Private Keys, Zertifikate
+*.pem
+*.key
+*.crt
+*.p12
+
+# =====================
+# Node / Frontend
+# =====================
+
+# Node modules & Cache
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build-Ausgabe
+dist/
+build/
+.cache/
+coverage/
+
+# Vite / React / Frontend config cache
+.docusaurus/
+.vite/
+*.local
