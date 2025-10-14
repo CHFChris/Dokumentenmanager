@@ -13,10 +13,12 @@ class CurrentUser:
         self.id = id
         self.email = email
 
+# ---- intern: Token decodieren & User laden ----
 def _decode_token(token: str) -> int:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        return int(payload.get("sub"))
+        sub = payload.get("sub")
+        return int(sub)
     except Exception:
         raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "Invalid token"})
 
@@ -26,7 +28,7 @@ def _load_user(db: Session, user_id: int) -> CurrentUser:
         raise HTTPException(status_code=401, detail={"code": "NO_USER", "message": "User not found"})
     return CurrentUser(id=user.id, email=user.email)
 
-# === Für API-Calls (Authorization: Bearer <token>) ===
+# ---- API: Authorization: Bearer <token> ----
 def get_current_user(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
@@ -37,7 +39,7 @@ def get_current_user(
     uid = _decode_token(token)
     return _load_user(db, uid)
 
-# === Für Web (JWT im httpOnly Cookie) ===
+# ---- WEB: JWT aus HttpOnly-Cookie 'access_token' ----
 def get_current_user_web(
     request: Request,
     db: Session = Depends(get_db),
@@ -47,3 +49,22 @@ def get_current_user_web(
         raise HTTPException(status_code=401, detail={"code": "NO_AUTH", "message": "Login required"})
     uid = _decode_token(token)
     return _load_user(db, uid)
+
+# ---- ANY: akzeptiert Cookie ODER Bearer ----
+def get_current_user_any(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> CurrentUser:
+    # 1) Cookie?
+    token = request.cookies.get("access_token")
+    if token:
+        uid = _decode_token(token)
+        return _load_user(db, uid)
+    # 2) Bearer?
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+        uid = _decode_token(token)
+        return _load_user(db, uid)
+    # nix gefunden
+    raise HTTPException(status_code=401, detail={"code": "NO_AUTH", "message": "Login required"})

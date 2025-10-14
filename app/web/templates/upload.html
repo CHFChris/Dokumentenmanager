@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Upload – SPKH{% endblock %}
+{% block content %}
+  <h2 class="mb-4">Upload Document</h2>
+  <p class="muted mb-4">Add new documents to your knowledge hub</p>
+
+  <div class="card">
+    <form method="post" action="/upload" enctype="multipart/form-data">
+      <div class="mb-4">
+        <label>Select File</label>
+        <input class="input" type="file" name="file" required />
+      </div>
+      <button class="btn">Upload Document</button>
+    </form>
+  </div>
+{% endblock %}

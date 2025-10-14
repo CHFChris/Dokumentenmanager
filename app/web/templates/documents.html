@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Documents – SPKH{% endblock %}
+{% block content %}
+  <h2 class="mb-4">Document Library</h2>
+
+  <form action="/documents" method="get" class="mb-4" style="display:flex;gap:8px;">
+    <input class="input" style="flex:1" type="text" name="q" value="{{ q }}" placeholder="Filter by name..." />
+    <button class="btn" type="submit">Search</button>
+  </form>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th><th>Type</th><th>Size</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% if docs.items %}
+        {% for d in docs.items %}
+          <tr>
+            <td>{{ d.name }}</td>
+            <td><span class="badge">{{ d.name.rsplit('.',1)[-1]|upper if '.' in d.name else 'FILE' }}</span></td>
+            <td>{{ d.size }}</td>
+            <td>
+              <form method="post" action="/documents/{{ d.id }}/delete" style="display:inline;">
+                <button class="btn" style="background:#fff;color:#111;border:1px solid #e5e7eb">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="4" class="muted">No documents yet.</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

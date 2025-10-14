@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Search – SPKH{% endblock %}
+{% block content %}
+  <h2 class="mb-4">Search Documents</h2>
+  <p class="muted mb-4">Find documents by content, title, or keywords</p>
+
+  <form action="/search" method="get" class="mb-4" style="display:flex;gap:8px;">
+    <input class="input" style="flex:1" type="text" name="q" value="{{ q }}" placeholder="Search your documents..." />
+    <button class="btn" type="submit">Search</button>
+  </form>
+
+  {% if not results %}
+    <div class="card muted" style="text-align:center;padding:48px;">Start searching</div>
+  {% else %}
+    <div class="card">
+      <table>
+        <thead><tr><th>Title</th><th>Size</th><th>SHA256</th></tr></thead>
+        <tbody>
+          {% for r in results.items %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td>{{ r.size }}</td>
+            <td style="font-family:monospace">{{ r.sha256 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endblock %}

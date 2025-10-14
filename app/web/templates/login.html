@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Registrieren{% endblock %}
+{% block title %}Login{% endblock %}
 {% block content %}
 <div class="max-w-md mx-auto">
-  <h1 class="text-2xl font-semibold mb-4">Registrieren</h1>
+  <h1 class="text-2xl font-semibold mb-4">Login</h1>
   {% if error %}<div class="mb-3 text-red-600">{{ error }}</div>{% endif %}
   <form method="post" action="">
     <div class="mb-3">
@@ -13,8 +13,8 @@
       <label class="block text-sm">Passwort</label>
       <input class="w-full border rounded p-2" type="password" name="password" required />
     </div>
-    <button class="px-4 py-2 border rounded">Konto anlegen</button>
-    <a class="ml-3 text-blue-700 underline" href="/auth/login-web">Zum Login</a>
+    <button class="px-4 py-2 border rounded">Einloggen</button>
+    <a class="ml-3 text-blue-700 underline" href="/auth/register-web">Registrieren</a>
   </form>
 </div>
 {% endblock %}

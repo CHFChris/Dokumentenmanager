@@ -1,40 +1,43 @@
 {% extends "base.html" %}
+{% block title %}Dashboard – SPKH{% endblock %}
 {% block content %}
-<h2>Dashboard</h2>
+  <h2 class="mb-4">Welcome to your Knowledge Hub</h2>
+  <p class="muted mb-8">Manage and search your documents efficiently</p>
 
-<form class="inline" method="get" action="/">
-  <input type="text" name="q" placeholder="Suche..." value="{{ q }}">
-  <button type="submit">Suchen</button>
-</form>
+  <div class="grid grid-3 mb-8">
+    <div class="card">
+      <div class="muted">Total Documents</div>
+      <div style="font-size:36px;font-weight:700">{{ stats.total }}</div>
+      <div class="muted" style="font-size:12px">+ from last month</div>
+    </div>
+    <div class="card">
+      <div class="muted">Recent Uploads</div>
+      <div style="font-size:36px;font-weight:700">{{ stats.recent_week }}</div>
+      <div class="muted" style="font-size:12px">This week</div>
+    </div>
+    <div class="card">
+      <div class="muted">Storage Used</div>
+      <div style="font-size:28px;font-weight:700">
+        {{ (stats.storage_bytes / (1024*1024*1024))|round(2) }} GB
+      </div>
+      <div class="muted" style="font-size:12px">of 10 GB limit</div>
+    </div>
+  </div>
 
-<form class="inline" method="post" action="/upload-web" enctype="multipart/form-data" style="margin:12px 0;">
-  <input type="file" name="file" required>
-  <button type="submit">Hochladen</button>
-</form>
-
-<table>
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>Größe</th>
-      <th>SHA256</th>
-      <th>Aktionen</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for f in items %}
-    <tr>
-      <td>{{ f.name }}</td>
-      <td>{{ f.size }}</td>
-      <td title="{{ f.sha256 }}">{{ f.sha256 }}</td>
-      <td><a href="/delete/{{ f.id }}">Löschen</a></td>
-    </tr>
-    {% endfor %}
-    {% if not items %}
-    <tr><td colspan="4" class="muted">Keine Dateien</td></tr>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:8px">Recently Uploaded</div>
+    {% if recent.items %}
+      {% for f in recent.items %}
+        <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid #f1f1f1;">
+          <div>
+            <div style="font-weight:600">{{ f.name }}</div>
+            <div class="muted" style="font-size:12px">{{ f.sha256[:10] }}… • {{ f.size }} B</div>
+          </div>
+          <a href="/documents" style="text-decoration:underline;color:#111">Open</a>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="muted">No recent uploads yet.</div>
     {% endif %}
-  </tbody>
-</table>
-
-<p>Gesamt: {{ total }}</p>
+  </div>
 {% endblock %}
