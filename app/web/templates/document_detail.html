@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Document · SPKH{% endblock %}
+
+{% block content %}
+<a href="/documents" class="muted">← Back to Documents</a>
+
+<h2 style="margin-top:6px">{{ doc.name }}</h2>
+<p class="muted" style="margin-top:-6px;margin-bottom:18px">Document details and metadata</p>
+
+<div class="grid grid-2">
+  <!-- Summary -->
+  <div class="card">
+    <div class="card-hdr">Document Summary</div>
+    <div class="card-body">
+      <p class="muted" style="margin-top:-6px">Automatically generated summary</p>
+      <p style="margin-top:12px">{{ doc.summary or "No summary available." }}</p>
+
+      {# Optional: Rename (collapsible) #}
+      <details style="margin-top:12px">
+        <summary class="muted">Rename</summary>
+        <form method="post" action="/documents/{{ doc.id }}/rename-web" class="row" style="margin-top:10px">
+          <input class="input" type="text" name="new_name" value="{{ doc.name }}" required>
+          <button class="btn">Save</button>
+        </form>
+      </details>
+    </div>
+  </div>
+
+  <!-- Metadata -->
+  <div class="card">
+    <div class="card-hdr">Metadata</div>
+    <div class="card-body grid" style="gap:10px">
+      <div class="row">
+        <span class="muted" style="width:120px">Upload Date</span>
+        <span>{{ doc.created_at.strftime('%Y-%m-%d') if doc.created_at else '-' }}</span>
+      </div>
+
+      {% set ext = (doc.name.rsplit('.',1)[-1]).upper() if '.' in doc.name else 'FILE' %}
+      <div class="row">
+        <span class="muted" style="width:120px">File Type</span>
+        <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">{{ ext }}</span>
+      </div>
+
+      <div class="row">
+        <span class="muted" style="width:120px">File Size</span>
+        <span>
+          {% if doc.size is not none %}
+            {% if doc.size >= 1024*1024 %}
+              {{ (doc.size/1024/1024)|round(2) }} MB
+            {% elif doc.size >= 1024 %}
+              {{ (doc.size/1024)|round(0) }} KB
+            {% else %}
+              {{ doc.size }} B
+            {% endif %}
+          {% else %}-{% endif %}
+        </span>
+      </div>
+
+      {% if doc.sha256 %}
+      <div class="row">
+        <span class="muted" style="width:120px">SHA256</span>
+        <code class="text-xs">{{ doc.sha256 }}</code>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Tags -->
+<div class="card" style="margin-top:16px">
+  <div class="card-hdr">Tags</div>
+  <div class="card-body">
+    {% if doc.tags %}
+      {% for t in doc.tags %}
+        <span class="badge gray" style="margin-right:6px;margin-bottom:6px;display:inline-block">{{ t }}</span>
+      {% endfor %}
+    {% else %}
+      <span class="muted">No tags</span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Actions -->
+<div class="card" style="margin-top:16px">
+  <div class="card-hdr">Actions</div>
+  <div class="card-body row">
+    <a class="btn primary" href="/documents/{{ doc.id }}/download">Download</a>
+    <a class="btn" href="/documents/{{ doc.id }}/versions">Show Versions</a>
+    <form method="post" action="/files/{{ doc.id }}/delete-web"
+          onsubmit="return confirm('Delete this file?')">
+      <button class="btn">Delete</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,43 +1,107 @@
 {% extends "base.html" %}
-{% block title %}Dashboard – SPKH{% endblock %}
-{% block content %}
-  <h2 class="mb-4">Welcome to your Knowledge Hub</h2>
-  <p class="muted mb-8">Manage and search your documents efficiently</p>
+{% block title %}Dashboard{% endblock %}
 
-  <div class="grid grid-3 mb-8">
-    <div class="card">
-      <div class="muted">Total Documents</div>
-      <div style="font-size:36px;font-weight:700">{{ stats.total }}</div>
-      <div class="muted" style="font-size:12px">+ from last month</div>
+{% block content %}
+<div class="container mx-auto max-w-6xl py-6 px-4">
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-semibold">Welcome to your Knowledge Hub</h1>
+    <form method="post" action="/auth/logout-web">
+      <button class="px-4 py-2 rounded-md border">Logout</button>
+    </form>
+  </div>
+
+  <p class="text-gray-600 mb-6">Manage and search your documents efficiently</p>
+
+  <!-- KPI Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div class="rounded-xl border p-5">
+      <div class="font-medium mb-2">Total Documents</div>
+      <div class="text-4xl font-bold">{{ stats.total }}</div>
+      <div class="text-xs text-gray-500 mt-1">+ in last month (demo)</div>
     </div>
-    <div class="card">
-      <div class="muted">Recent Uploads</div>
-      <div style="font-size:36px;font-weight:700">{{ stats.recent_week }}</div>
-      <div class="muted" style="font-size:12px">This week</div>
+
+    <div class="rounded-xl border p-5">
+      <div class="font-medium mb-2">Recent Uploads</div>
+      <div class="text-4xl font-bold">{{ stats.recent_week }}</div>
+      <div class="text-xs text-gray-500 mt-1">This week</div>
     </div>
-    <div class="card">
-      <div class="muted">Storage Used</div>
-      <div style="font-size:28px;font-weight:700">
-        {{ (stats.storage_bytes / (1024*1024*1024))|round(2) }} GB
+
+    <div class="rounded-xl border p-5">
+      <div class="font-medium mb-2">Storage Used</div>
+      <div class="text-3xl font-bold">
+        {{ (stats.storage_bytes / (1024*1024*1024)) | round(2) }} GB
       </div>
-      <div class="muted" style="font-size:12px">of 10 GB limit</div>
+      <div class="text-xs text-gray-500 mt-1">of 10 GB limit</div>
     </div>
   </div>
 
-  <div class="card">
-    <div style="font-weight:600;margin-bottom:8px">Recently Uploaded</div>
-    {% if recent.items %}
-      {% for f in recent.items %}
-        <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid #f1f1f1;">
-          <div>
-            <div style="font-weight:600">{{ f.name }}</div>
-            <div class="muted" style="font-size:12px">{{ f.sha256[:10] }}… • {{ f.size }} B</div>
-          </div>
-          <a href="/documents" style="text-decoration:underline;color:#111">Open</a>
-        </div>
-      {% endfor %}
+  <!-- Recently Uploaded -->
+  <div class="rounded-xl border">
+    <div class="p-5 border-b">
+      <div class="text-lg font-medium">Recently Uploaded</div>
+      <div class="text-sm text-gray-500">Your latest document uploads</div>
+    </div>
+
+    {% if stats.recent_items %}
+      <ul>
+        {% for item in stats.recent_items %}
+          <li class="flex items-center justify-between p-5 border-b last:border-0">
+            <div class="flex items-center gap-3">
+              <div>
+                <div class="font-medium">
+                  <a href="/documents/{{ item.id }}">{{ item.name }}</a>
+                </div>
+                <div class="text-xs text-gray-500">
+                  {% if item.created_at %}{{ item.created_at.strftime("%d %b %Y %H:%M") }}{% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="text-sm text-gray-500">
+              <a class="underline" href="/documents/{{ item.id }}">Open</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
     {% else %}
-      <div class="muted">No recent uploads yet.</div>
+      <div class="p-5 text-sm text-gray-500">No recent uploads yet.</div>
     {% endif %}
   </div>
+
+  {% if docs and docs.items %}
+    <div class="rounded-xl border mt-6">
+      <div class="p-5 border-b">
+        <div class="text-lg font-medium">Latest Documents</div>
+      </div>
+      <div class="p-5">
+        <table class="table" role="grid" style="width:100%">
+          <thead>
+            <tr>
+              <th>Title</th><th>Type</th><th>Size</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in docs.items %}
+            <tr>
+              <td><a href="/documents/{{ d.id }}">{{ d.name }}</a></td>
+              <td>{{ (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' }}</td>
+              <td>
+                {% if d.size >= 1024*1024 %}
+                  {{ (d.size/1024/1024)|round(2) }} MB
+                {% elif d.size >= 1024 %}
+                  {{ (d.size/1024)|round(0) }} KB
+                {% else %}
+                  {{ d.size }} B
+                {% endif %}
+              </td>
+              <td><a href="/documents/{{ d.id }}/download" class="underline">Download</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+</div>
 {% endblock %}

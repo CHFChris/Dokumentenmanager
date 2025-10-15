@@ -1,16 +1,48 @@
 {% extends "base.html" %}
-{% block title %}Upload – SPKH{% endblock %}
-{% block content %}
-  <h2 class="mb-4">Upload Document</h2>
-  <p class="muted mb-4">Add new documents to your knowledge hub</p>
+{% block title %}Upload · SPKH{% endblock %}
 
-  <div class="card">
-    <form method="post" action="/upload" enctype="multipart/form-data">
-      <div class="mb-4">
-        <label>Select File</label>
-        <input class="input" type="file" name="file" required />
+{% block content %}
+<h2>Upload Document</h2>
+<p class="muted" style="margin-top:-4px;margin-bottom:18px;">Add new documents to your knowledge hub</p>
+
+{% if error %}
+  <div class="mb-4 rounded-md border border-red-200 bg-red-50 text-red-800 px-4 py-2 text-sm">
+    {{ error }}
+  </div>
+{% endif %}
+
+<div class="card" style="max-width:900px">
+  <div class="card-body grid grid-1">
+    <form action="/upload-web" method="post" enctype="multipart/form-data">
+      <header class="mb-2" style="font-weight:600">Document Upload</header>
+
+      <div class="drop">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 5v14m0-14l-5 5m5-5l5 5" stroke="#6b7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+
+        <label class="w-full">
+          <input class="input" type="file" name="file" accept=".pdf,.docx,.txt" required>
+        </label>
+
+        <div class="muted">Supported formats: PDF, DOCX, TXT</div>
       </div>
-      <button class="btn">Upload Document</button>
+
+      <div style="height:14px"></div>
+
+      <div class="row">
+        <label class="w-full" style="flex:1">
+          <select class="input" name="category">
+            <option value="">Select a category</option>
+            <option>Contracts</option>
+            <option>Finance</option>
+            <option>Notes</option>
+          </select>
+        </label>
+
+        <button class="btn primary" type="submit">Upload Document</button>
+      </div>
     </form>
   </div>
+</div>
 {% endblock %}

@@ -1,38 +1,61 @@
 {% extends "base.html" %}
-{% block title %}Documents – SPKH{% endblock %}
+{% block title %}Documents · SPKH{% endblock %}
 {% block content %}
-  <h2 class="mb-4">Document Library</h2>
+<h2>Document Library</h2>
+<p class="muted" style="margin-top:-4px;margin-bottom:18px;">Manage your uploaded documents</p>
 
-  <form action="/documents" method="get" class="mb-4" style="display:flex;gap:8px;">
-    <input class="input" style="flex:1" type="text" name="q" value="{{ q }}" placeholder="Filter by name..." />
-    <button class="btn" type="submit">Search</button>
-  </form>
-
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>Title</th><th>Type</th><th>Size</th><th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% if docs.items %}
-        {% for d in docs.items %}
+<div class="card">
+  <div class="card-hdr row">
+    <div>Documents</div>
+    <div class="right">
+      <select class="input" style="min-width:180px">
+        <option>All Categories</option>
+        <option>Contracts</option><option>Finance</option><option>Notes</option>
+      </select>
+    </div>
+  </div>
+  <div class="card-body">
+    {% if docs and docs.items %}
+      <table role="grid">
+        <thead>
           <tr>
-            <td>{{ d.name }}</td>
-            <td><span class="badge">{{ d.name.rsplit('.',1)[-1]|upper if '.' in d.name else 'FILE' }}</span></td>
-            <td>{{ d.size }}</td>
+            <th>Title</th><th>Type</th><th>Size</th><th>Date</th><th style="width:150px">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in docs.items %}
+          {% set ext = (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' %}
+          <tr>
+            <td><a href="/documents/{{ d.id }}">{{ d.name }}</a></td>
             <td>
-              <form method="post" action="/documents/{{ d.id }}/delete" style="display:inline;">
-                <button class="btn" style="background:#fff;color:#111;border:1px solid #e5e7eb">Delete</button>
+              <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">{{ ext }}</span>
+            </td>
+            <td>
+              {% if d.size >= 1024*1024 %}
+                {{ (d.size/1024/1024)|round(2) }} MB
+              {% elif d.size >= 1024 %}
+                {{ (d.size/1024)|round(0) }} KB
+              {% else %}
+                {{ d.size }} B
+              {% endif %}
+            </td>
+            <td class="muted">{{ d.created_at.strftime('%Y-%m-%d') if d.created_at else '-' }}</td>
+            <td class="row" style="gap:6px">
+              <a class="btn" href="/documents/{{ d.id }}">View</a>
+              <a class="btn" href="/documents/{{ d.id }}/download">Download</a>
+              <form method="post" action="/files/{{ d.id }}/delete-web" onsubmit="return confirm('Delete this file?')">
+                <button class="btn">Delete</button>
               </form>
             </td>
           </tr>
-        {% endfor %}
-      {% else %}
-        <tr><td colspan="4" class="muted">No documents yet.</td></tr>
-      {% endif %}
-      </tbody>
-    </table>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">
+        <div>No documents yet</div>
+      </div>
+    {% endif %}
   </div>
+</div>
 {% endblock %}

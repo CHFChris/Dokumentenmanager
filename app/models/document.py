@@ -1,25 +1,92 @@
-from typing import Optional, List   # <-- NEU
+# app/models/document.py
+from __future__ import annotations
+from typing import Optional, List
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, BigInteger, SmallInteger, Integer, Boolean, ForeignKey
+from sqlalchemy import String, BigInteger, SmallInteger, Boolean, ForeignKey, DateTime, func
+
 from app.models.user import Base, User
 
 class Document(Base):
     __tablename__ = "documents"
 
+    # ------------------------------------------------------------
+    # Core
+    # ------------------------------------------------------------
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    owner_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    folder_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
-    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    storage_provider_id: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
-    storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
-    checksum_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    owner_user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
 
+    # ------------------------------------------------------------
+    # Struktur (optional)
+    # ------------------------------------------------------------
+    folder_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+
+    # ------------------------------------------------------------
+    # Datei-Infos
+    # ------------------------------------------------------------
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    checksum_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+    # ------------------------------------------------------------
+    # Speicher-Provider (lokal/S3/etc.)
+    # ------------------------------------------------------------
+    storage_provider_id: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+
+    # ------------------------------------------------------------
+    # Flags & Zeit
+    # ------------------------------------------------------------
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+
+    # ------------------------------------------------------------
+    # Beziehungen
+    # ------------------------------------------------------------
     owner: Mapped[User] = relationship(back_populates="documents")
-    versions: Mapped[List["DocumentVersion"]] = relationship(  # List importiert
+    versions: Mapped[List["DocumentVersion"]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan"
     )
+
+    # ------------------------------------------------------------
+    # Kompatibilitäts-Aliasse
+    # ------------------------------------------------------------
+    @property
+    def name(self) -> str:
+        """Alias für filename (z. B. im Frontend/alten Services)."""
+        return self.filename
+
+    @name.setter
+    def name(self, value: str) -> None:
+        self.filename = value
+
+    @property
+    def size(self) -> int:
+        """Alias für size_bytes."""
+        return self.size_bytes
+
+    @size.setter
+    def size(self, value: int) -> None:
+        self.size_bytes = value
+
+    @property
+    def sha256(self) -> Optional[str]:
+        """Alias für checksum_sha256."""
+        return self.checksum_sha256
+
+    @sha256.setter
+    def sha256(self, value: Optional[str]) -> None:
+        self.checksum_sha256 = value
+
+    # ------------------------------------------------------------
+    # Debug
+    # ------------------------------------------------------------
+    def __repr__(self) -> str:
+        return f"<Document id={self.id} filename={self.filename!r} size={self.size_bytes}B>"

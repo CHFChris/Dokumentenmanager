@@ -1,23 +1,88 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>{% block title %}SPKH{% endblock %}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/static/favicon.svg"/>
+
+  <!-- Tailwind für schnelles Utility-Styling -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Custom Tokens & Legacy-Klassen (für bestehende Seiten/Mockup) -->
+  <style>
+    :root{
+      --bg:#fafafa;--card:#fff;--muted:#6b7280;--border:#e5e7eb;
+      --ink:#0b0f19;--primary:#0b0f19;--primary-ink:#fff;
+      --badge:#fee2e2;--badge-ink:#991b1b;
+      --radius:14px;--shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.06);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font:14px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;color:var(--ink);background:var(--bg)}
+    a{color:inherit;text-decoration:none}
+    /* Karten / Tabellen etc. aus deinem ersten Layout */
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .card-hdr{padding:18px 20px;border-bottom:1px solid var(--border)}
+    .card-body{padding:20px}
+    table{width:100%;border-collapse:collapse}
+    thead th{font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.08em;padding:12px 12px;border-bottom:1px solid var(--border);text-align:left}
+    tbody td{padding:14px 12px;border-bottom:1px solid var(--border)}
+    .badge{display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:10px;background:#eef2ff;color:#3730a3;font-weight:600;font-size:12px}
+    .badge.red{background:#fee2e2;color:#991b1b}
+    .badge.green{background:#dcfce7;color:#065f46}
+    .badge.gray{background:#f3f4f6;color:#111827}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:16px}
+    .grid-2{grid-template-columns:1fr 1fr}
+    .grid-3{grid-template-columns:repeat(3,1fr)}
+    .input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#f6f7fb}
+    .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#9ca3af;border:2px dashed var(--border);border-radius:16px;height:220px}
+    .drop{border:2px dashed var(--border);border-radius:16px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px}
+    .row{display:flex;gap:12px;align-items:center}
+    .right{margin-left:auto}
+  </style>
+
+  {% block head_extra %}{% endblock %}
 </head>
 <body class="bg-white text-gray-900">
-  <header class="border-b">
-    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-      <div class="font-semibold">SPKH</div>
+  {% set p = request.url.path %}
+  {% set current = active if active is defined and active else (
+      'dashboard' if p.startswith('/dashboard')
+      else 'upload' if p.startswith('/upload')
+      else 'documents' if p.startswith('/documents')
+      else 'search' if p.startswith('/search')
+      else ''
+  ) %}
+
+  <!-- Sticky/Glass Navbar (kombiniert aus beiden Versionen) -->
+  <header class="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
+    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
+      <a href="/dashboard" class="font-semibold tracking-wide">SPKH</a>
+
+      <div class="flex-1"></div>
+
       {% if user %}
         <nav class="flex items-center gap-2">
-          <a class="px-3 py-1 rounded-md {% if active=='dashboard' %}bg-black text-white{% endif %}" href="/dashboard">Dashboard</a>
-          <a class="px-3 py-1 rounded-md {% if active=='upload' %}bg-black text-white{% endif %}" href="/upload">Upload</a>
-          <a class="px-3 py-1 rounded-md {% if active=='documents' %}bg-black text-white{% endif %}" href="/documents">Documents</a>
-          <a class="px-3 py-1 rounded-md {% if active=='search' %}bg-black text-white{% endif %}" href="/search">Search</a>
+          <a href="/dashboard"
+             class="px-3 py-1 rounded-md {{ 'bg-black text-white' if current=='dashboard' else 'hover:bg-gray-100' }}">
+             Dashboard
+          </a>
+          <a href="/upload"
+             class="px-3 py-1 rounded-md {{ 'bg-black text-white' if current=='upload' else 'hover:bg-gray-100' }}">
+             Upload
+          </a>
+          <a href="/documents"
+             class="px-3 py-1 rounded-md {{ 'bg-black text-white' if current=='documents' else 'hover:bg-gray-100' }}">
+             Documents
+          </a>
+          <a href="/search"
+             class="px-3 py-1 rounded-md {{ 'bg-black text-white' if current=='search' else 'hover:bg-gray-100' }}">
+             Search
+          </a>
+
           <form method="post" action="/auth/logout-web" class="ml-2">
-            <button class="px-3 py-1 border rounded-md">Logout</button>
+            <button class="px-3 py-1 border rounded-md hover:bg-gray-50">Logout</button>
           </form>
         </nav>
       {% else %}
@@ -28,8 +93,17 @@
       {% endif %}
     </div>
   </header>
+
   <main class="max-w-6xl mx-auto px-4 py-6">
+    {% if error %}
+      <div class="mb-4 rounded-md border border-red-200 bg-red-50 text-red-800 px-4 py-2 text-sm">
+        {{ error }}
+      </div>
+    {% endif %}
+
     {% block content %}{% endblock %}
   </main>
+
+  {% block body_end %}{% endblock %}
 </body>
 </html>
