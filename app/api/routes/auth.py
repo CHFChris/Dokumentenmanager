@@ -10,7 +10,8 @@ from app.db.database import get_db
 from app.schemas.auth import RegisterIn, LoginIn, UserOut
 from app.services.auth_service import register_user, login_user, verify_login
 
-router = APIRouter()
+# Kein prefix hier, da in main.py bereits prefix="/auth" gesetzt wird.
+router = APIRouter(tags=["auth"])
 
 # Pfad: .../app/api/routes/auth.py  -> parents[2] == .../app
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "web" / "templates"
@@ -20,7 +21,7 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # --------------------
 # API: JSON Endpunkte
 # --------------------
-@router.post("/register", response_model=UserOut, status_code=201)
+@router.post("/register", response_model=UserOut, status_code=201, openapi_extra={"security": []})
 def api_register(body: RegisterIn, db: Session = Depends(get_db)):
     try:
         user = register_user(db, body.email, body.password)
@@ -30,7 +31,7 @@ def api_register(body: RegisterIn, db: Session = Depends(get_db)):
             raise HTTPException(status_code=409, detail="USER_EXISTS")
         raise
 
-@router.post("/login")
+@router.post("/login", openapi_extra={"security": []})
 def api_login(body: LoginIn, db: Session = Depends(get_db)):
     # liefert {"token": "...", "user": {...}}
     return login_user(db, body.email, body.password)
@@ -44,7 +45,7 @@ def api_logout(response: Response):
 # --------------------
 # WEB: HTML-Formulare
 # --------------------
-@router.get("/login-web", response_class=HTMLResponse)
+@router.get("/login-web", response_class=HTMLResponse, openapi_extra={"security": []})
 def login_form(request: Request):
     # user=None -> in base.html keine App-Navigation
     return templates.TemplateResponse(
@@ -52,7 +53,7 @@ def login_form(request: Request):
         {"request": request, "user": None, "error": None},
     )
 
-@router.post("/login-web")
+@router.post("/login-web", openapi_extra={"security": []})
 def login_submit(
     request: Request,
     response: Response,
@@ -82,14 +83,14 @@ def login_submit(
     )
     return resp
 
-@router.get("/register-web", response_class=HTMLResponse)
+@router.get("/register-web", response_class=HTMLResponse, openapi_extra={"security": []})
 def register_form(request: Request):
     return templates.TemplateResponse(
         "register.html",
         {"request": request, "user": None, "error": None},
     )
 
-@router.post("/register-web")
+@router.post("/register-web", openapi_extra={"security": []})
 def register_submit(
     request: Request,
     response: Response,

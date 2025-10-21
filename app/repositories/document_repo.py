@@ -1,4 +1,3 @@
-# app/repositories/document_repo.py
 from __future__ import annotations
 
 from typing import List, Tuple, Optional, Dict, Any
@@ -12,11 +11,29 @@ from app.models.document_version import DocumentVersion
 
 
 # -------------------------------------------------------------------
-# Einzeldokument (Owner-Check)
+# Hilfsfunktion: Owner-Filter + Textsuche
+# -------------------------------------------------------------------
+def _filters(user_id: int, q: Optional[str]) -> list:
+    """
+    Gemeinsamer Filter:
+    - Nur Dokumente des Users
+    - Nur nicht-gelöschte
+    - Optional case-insensitive Suche im Dateinamen
+    """
+    cond = [Document.owner_user_id == user_id, Document.is_deleted.is_(False)]
+    if q:
+        like = f"%{q.lower()}%"
+        cond.append(func.lower(Document.filename).like(like))
+    return cond
+
+
+# -------------------------------------------------------------------
+# Einzelabrufe / Owner-Check
 # -------------------------------------------------------------------
 def get_document_for_user(db: Session, user_id: int, doc_id: int) -> Optional[Document]:
     """
-    Holt genau EIN Dokument für den gegebenen User (nur nicht-gelöschte).
+    Holt GENAU EIN Dokument für den gegebenen User (nur nicht-gelöschte).
+    Gibt None zurück, wenn nicht vorhanden oder nicht berechtigt.
     """
     stmt = (
         select(Document)
@@ -30,26 +47,27 @@ def get_document_for_user(db: Session, user_id: int, doc_id: int) -> Optional[Do
     return db.execute(stmt).scalars().one_or_none()
 
 
-# Rückwärtskompatibel: alter Name/Signatur
 def get_document_owned(db: Session, doc_id: int, owner_id: int) -> Optional[Document]:
     """
-    Altkompatibler Wrapper – bitte neu: get_document_for_user(db, user_id, doc_id)
+    Rückwärtskompatibler Wrapper für Altcode.
+    Neu bitte `get_document_for_user(db, user_id, doc_id)` verwenden.
     """
     return get_document_for_user(db=db, user_id=owner_id, doc_id=doc_id)
 
 
 # -------------------------------------------------------------------
-# Rename (nur DB / ohne Datei-Verschieben)
+# Umbenennen (nur DB, verschiebt KEINE Dateien im FS/Storage)
 # -------------------------------------------------------------------
 def rename_document(db: Session, user_id: int, doc_id: int, new_name: str) -> bool:
     """
-    Bennennt ein Dokument um (nur Owner & nicht gelöscht). True bei Erfolg.
+    Bennennt ein Dokument um (nur Owner & nicht gelöscht).
+    Rückgabe: True bei Erfolg, sonst False.
     """
     new_name = (new_name or "").strip()
     if not new_name:
         return False
 
-    # Basisschutz gegen unzulässige Namen / Steuerzeichen
+    # Minimaler Basisschutz gegen unzulässige Namen/Steuerzeichen
     if any(ch in new_name for ch in ("/", "\\", "\0")):
         return False
 
@@ -59,31 +77,17 @@ def rename_document(db: Session, user_id: int, doc_id: int, new_name: str) -> bo
 
     doc.filename = new_name
 
-    # Optional: updated_at pflegen, falls im Modell vorhanden
+    # Optional: updated_at pflegen, falls Feld existiert
     if hasattr(doc, "updated_at"):
         try:
             doc.updated_at = datetime.utcnow()
         except Exception:
+            # Kein harter Abbruch, falls es schiefgeht.
             pass
 
     db.commit()
     db.refresh(doc)
     return True
-
-
-# -------------------------------------------------------------------
-# Gemeinsame Filter
-# -------------------------------------------------------------------
-def _filters(user_id: int, q: Optional[str]) -> list:
-    """
-    - filtert nach Besitzer und nicht-gelöschten Dokumenten
-    - optional case-insensitive Suche im Dateinamen
-    """
-    cond = [Document.owner_user_id == user_id, Document.is_deleted.is_(False)]
-    if q:
-        like = f"%{q.lower()}%"
-        cond.append(func.lower(Document.filename).like(like))
-    return cond
 
 
 # -------------------------------------------------------------------
@@ -97,11 +101,11 @@ def search_documents(
     offset: int,
 ) -> Tuple[List[Document], int]:
     """
-    Gibt (Dokumente, Gesamtzahl) zurück. Sortiert neueste zuerst.
+    Liefert (Dokumentenliste, Gesamtanzahl).
+    Sortierung: Neueste zuerst (nach created_at, sonst id).
     """
     cond = _filters(user_id, q)
 
-    # Nach created_at, sonst fallback id
     has_created_at = hasattr(Document, "created_at")
     order_by_col = Document.created_at if has_created_at else Document.id
 
@@ -134,7 +138,7 @@ def list_documents_for_user(
 
 
 # -------------------------------------------------------------------
-# Anlegen + erste Version
+# Anlegen + erste Version (vereinigte Variante MIT note)
 # -------------------------------------------------------------------
 def create_document_with_version(
     db: Session,
@@ -144,10 +148,14 @@ def create_document_with_version(
     size_bytes: int,
     checksum_sha256: Optional[str],
     mime_type: Optional[str],
+    note: Optional[str] = None,  # <- Vereinheitlichung: note ist jetzt möglich
 ) -> Document:
     """
-    Legt ein Document an und erzeugt Version 1.
+    Legt ein Document an und erzeugt Version 1 (inkl. optionaler Notiz).
+    - Spiegelt initiale Metadaten in Document und DocumentVersion.
+    - `note` defaulted auf "Initial upload", wenn None oder leer.
     """
+    # Document anlegen
     doc = Document(
         owner_user_id=user_id,
         filename=filename,
@@ -157,8 +165,9 @@ def create_document_with_version(
         mime_type=mime_type or None,
     )
     db.add(doc)
-    db.flush()  # doc.id verfügbar
+    db.flush()  # doc.id wird für die Version benötigt
 
+    # Erste Version anlegen (v1)
     ver = DocumentVersion(
         document_id=doc.id,
         version_number=1,
@@ -166,7 +175,7 @@ def create_document_with_version(
         size_bytes=size_bytes,
         checksum_sha256=checksum_sha256 or None,
         mime_type=mime_type or None,
-        note="Initial upload",
+        note=(note or "Initial upload"),
     )
     db.add(ver)
 
@@ -176,11 +185,12 @@ def create_document_with_version(
 
 
 # -------------------------------------------------------------------
-# Soft-Delete
+# Soft-Delete (Markierung)
 # -------------------------------------------------------------------
 def soft_delete_document(db: Session, doc_id: int, user_id: int) -> bool:
     """
-    Markiert ein Dokument als gelöscht (soft). True, wenn genau eine Zeile betroffen ist.
+    Markiert ein Dokument als gelöscht (soft).
+    True, wenn genau eine Zeile betroffen ist.
     """
     res = db.execute(
         update(Document)
@@ -207,7 +217,7 @@ def update_document_name_and_path(
 ) -> bool:
     """
     Aktualisiert atomar filename + storage_path (nur wenn Owner & nicht gelöscht).
-    True, wenn genau eine Zeile aktualisiert wurde.
+    Rückgabe: True, wenn genau eine Zeile aktualisiert wurde.
     """
     new_filename = (new_filename or "").strip()
     new_storage_path = (new_storage_path or "").strip()
@@ -235,6 +245,9 @@ def update_document_name_and_path(
 # Dashboard-Stats
 # -------------------------------------------------------------------
 def count_documents_for_user(db: Session, user_id: int) -> int:
+    """
+    Liefert die Anzahl aller nicht-gelöschten Dokumente eines Users.
+    """
     stmt = (
         select(func.count())
         .select_from(Document)
@@ -244,6 +257,10 @@ def count_documents_for_user(db: Session, user_id: int) -> int:
 
 
 def storage_used_for_user(db: Session, user_id: int) -> int:
+    """
+    Liefert die Summe der size_bytes aller nicht-gelöschten Dokumente eines Users.
+    Hinweis: size_bytes spiegelt den "aktuellen Stand" im Document.
+    """
     stmt = (
         select(func.coalesce(func.sum(Document.size_bytes), 0))
         .select_from(Document)
@@ -254,8 +271,8 @@ def storage_used_for_user(db: Session, user_id: int) -> int:
 
 def recent_uploads_count_week(db: Session, user_id: int) -> int:
     """
-    Zählt Uploads der letzten 7 Tage.
-    Fällt ohne created_at auf Gesamtzahl zurück.
+    Zählt Uploads der letzten 7 Tage anhand created_at.
+    Fällt ohne created_at-Feld auf die Gesamtzahl zurück.
     """
     if hasattr(Document, "created_at"):
         since = datetime.utcnow() - timedelta(days=7)
@@ -275,7 +292,8 @@ def recent_uploads_count_week(db: Session, user_id: int) -> int:
 def recent_uploads_for_user(db: Session, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
     """
     Liefert die letzten Uploads (für das Dashboard).
-    Sortiert nach created_at, fallback id. Template-freundliche Dicts.
+    Sortierung nach created_at, Fallback id.
+    Rückgabe als template-freundliche Dicts.
     """
     has_created_at = hasattr(Document, "created_at")
     order_by_col = Document.created_at if has_created_at else Document.id
@@ -308,8 +326,8 @@ def recent_uploads_for_user(db: Session, user_id: int, limit: int = 5) -> List[D
 def list_versions_for_document(db: Session, doc_id: int, owner_id: int) -> List[DocumentVersion]:
     """
     Liefert alle Versionen eines Dokuments (neueste zuerst), nur wenn der Owner passt.
+    (Owner-Absicherung via Subquery auf Document.)
     """
-    # Absicherung via Join/Subquery auf Document + owner
     sub = select(Document.id).where(
         Document.id == doc_id,
         Document.owner_user_id == owner_id,
@@ -344,7 +362,9 @@ def add_version(
     note: Optional[str],
 ) -> DocumentVersion:
     """
-    Fügt eine neue Version hinzu und spiegelt den aktuellen Stand ins Document.
+    Fügt eine neue Version hinzu und spiegelt den aktuellen Stand zurück ins Document.
+    - Nimmt automatisch die nächste Versionsnummer.
+    - Aktualisiert im Document die Felder (storage_path, size_bytes, checksum_sha256, mime_type).
     """
     vnum = next_version_number(db, doc.id)
 
@@ -353,21 +373,21 @@ def add_version(
         version_number=vnum,
         storage_path=storage_path,
         size_bytes=size_bytes,
-        checksum_sha256=checksum_sha256,
-        mime_type=mime_type,
+        checksum_sha256=checksum_sha256 or None,
+        mime_type=mime_type or None,
         note=note,
     )
     db.add(ver)
 
-    # Document-Spiegel (aktueller Stand) mitziehen:
+    # Spiegel im "aktuellen" Document mitziehen
     db.execute(
         update(Document)
         .where(Document.id == doc.id)
         .values(
             storage_path=storage_path,
             size_bytes=size_bytes,
-            checksum_sha256=checksum_sha256,
-            mime_type=mime_type,
+            checksum_sha256=checksum_sha256 or None,
+            mime_type=mime_type or None,
         )
     )
 
@@ -379,7 +399,7 @@ def add_version(
 
 def get_version_owned(db: Session, doc_id: int, version_id: int, owner_id: int) -> Optional[DocumentVersion]:
     """
-    Holt eine konkrete Version eines Dokuments (Owner-gesichert).
+    Holt eine konkrete Version eines Dokuments (Owner-gesichert via Join).
     """
     ver_stmt = (
         select(DocumentVersion)
