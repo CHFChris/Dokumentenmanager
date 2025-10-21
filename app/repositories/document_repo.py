@@ -39,7 +39,7 @@ def get_document_owned(db: Session, doc_id: int, owner_id: int) -> Optional[Docu
 
 
 # -------------------------------------------------------------------
-# Rename
+# Rename (nur DB / ohne Datei-Verschieben)
 # -------------------------------------------------------------------
 def rename_document(db: Session, user_id: int, doc_id: int, new_name: str) -> bool:
     """
@@ -163,7 +163,10 @@ def create_document_with_version(
         document_id=doc.id,
         version_number=1,
         storage_path=storage_path,
+        size_bytes=size_bytes,
         checksum_sha256=checksum_sha256 or None,
+        mime_type=mime_type or None,
+        note="Initial upload",
     )
     db.add(ver)
 
@@ -192,7 +195,9 @@ def soft_delete_document(db: Session, doc_id: int, user_id: int) -> bool:
     return (res.rowcount or 0) > 0
 
 
+# -------------------------------------------------------------------
 # Atomare Aktualisierung von Name + Pfad
+# -------------------------------------------------------------------
 def update_document_name_and_path(
     db: Session,
     user_id: int,
@@ -295,3 +300,96 @@ def recent_uploads_for_user(db: Session, user_id: int, limit: int = 5) -> List[D
             }
         )
     return items
+
+
+# -------------------------------------------------------------------
+# Versionierung
+# -------------------------------------------------------------------
+def list_versions_for_document(db: Session, doc_id: int, owner_id: int) -> List[DocumentVersion]:
+    """
+    Liefert alle Versionen eines Dokuments (neueste zuerst), nur wenn der Owner passt.
+    """
+    # Absicherung via Join/Subquery auf Document + owner
+    sub = select(Document.id).where(
+        Document.id == doc_id,
+        Document.owner_user_id == owner_id,
+        Document.is_deleted.is_(False),
+    ).scalar_subquery()
+
+    stmt = (
+        select(DocumentVersion)
+        .where(DocumentVersion.document_id == sub)
+        .order_by(desc(DocumentVersion.version_number))
+    )
+    return db.execute(stmt).scalars().all()
+
+
+def next_version_number(db: Session, doc_id: int) -> int:
+    """
+    Ermittelt die nächste Versionsnummer für ein Dokument.
+    """
+    stmt = select(func.coalesce(func.max(DocumentVersion.version_number), 0)).where(
+        DocumentVersion.document_id == doc_id
+    )
+    return (db.scalar(stmt) or 0) + 1
+
+
+def add_version(
+    db: Session,
+    doc: Document,
+    storage_path: str,
+    size_bytes: int,
+    checksum_sha256: Optional[str],
+    mime_type: Optional[str],
+    note: Optional[str],
+) -> DocumentVersion:
+    """
+    Fügt eine neue Version hinzu und spiegelt den aktuellen Stand ins Document.
+    """
+    vnum = next_version_number(db, doc.id)
+
+    ver = DocumentVersion(
+        document_id=doc.id,
+        version_number=vnum,
+        storage_path=storage_path,
+        size_bytes=size_bytes,
+        checksum_sha256=checksum_sha256,
+        mime_type=mime_type,
+        note=note,
+    )
+    db.add(ver)
+
+    # Document-Spiegel (aktueller Stand) mitziehen:
+    db.execute(
+        update(Document)
+        .where(Document.id == doc.id)
+        .values(
+            storage_path=storage_path,
+            size_bytes=size_bytes,
+            checksum_sha256=checksum_sha256,
+            mime_type=mime_type,
+        )
+    )
+
+    db.commit()
+    db.refresh(ver)
+    db.refresh(doc)
+    return ver
+
+
+def get_version_owned(db: Session, doc_id: int, version_id: int, owner_id: int) -> Optional[DocumentVersion]:
+    """
+    Holt eine konkrete Version eines Dokuments (Owner-gesichert).
+    """
+    ver_stmt = (
+        select(DocumentVersion)
+        .join(Document, Document.id == DocumentVersion.document_id)
+        .where(
+            DocumentVersion.id == version_id,
+            DocumentVersion.document_id == doc_id,
+            Document.owner_user_id == owner_id,
+            Document.is_deleted.is_(False),
+        )
+        .limit(1)
+    )
+    return db.execute(ver_stmt).scalar_one_or_none()
