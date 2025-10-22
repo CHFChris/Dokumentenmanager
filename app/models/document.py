@@ -1,11 +1,21 @@
 # app/models/document.py
 from __future__ import annotations
-from typing import Optional, List
+
+from typing import Optional, List, TYPE_CHECKING
+from datetime import datetime
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, BigInteger, SmallInteger, Boolean, ForeignKey, DateTime, func
+from sqlalchemy import (
+    String, BigInteger, SmallInteger, Boolean,
+    ForeignKey, DateTime, func
+)
 
-from app.models.user import Base, User
+from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
+    from app.models.document_version import DocumentVersion
+
 
 class Document(Base):
     __tablename__ = "documents"
@@ -14,11 +24,12 @@ class Document(Base):
     # Core
     # ------------------------------------------------------------
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+
     owner_user_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True
+        index=True,
     )
 
     # ------------------------------------------------------------
@@ -44,15 +55,24 @@ class Document(Base):
     # Flags & Zeit
     # ------------------------------------------------------------
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
     # ------------------------------------------------------------
     # Beziehungen
     # ------------------------------------------------------------
-    owner: Mapped[User] = relationship(back_populates="documents")
+    owner: Mapped["User"] = relationship(
+        "User",
+        back_populates="documents",
+        passive_deletes=True,
+    )
+
     versions: Mapped[List["DocumentVersion"]] = relationship(
+        "DocumentVersion",
         back_populates="document",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     # ------------------------------------------------------------
