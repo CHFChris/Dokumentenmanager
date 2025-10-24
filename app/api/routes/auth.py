@@ -1,4 +1,5 @@
 # app/api/routes/auth.py
+from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
@@ -13,10 +14,9 @@ from app.schemas.auth import RegisterIn, LoginIn, UserOut
 from app.services.auth_service import register_user, login_user, verify_login
 from app.services.password_reset_service import start_password_reset, complete_password_reset
 
-# Kein Prefix hier, main.py setzt z. B. prefix="/auth"
+# Kein Prefix hier; main.py setzt z. B. prefix="/auth"
 router = APIRouter(tags=["auth"])
 
-# Template-Pfad
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "web" / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -27,24 +27,31 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 @router.post("/register", response_model=UserOut, status_code=201, openapi_extra={"security": []})
 def api_register(body: RegisterIn, db: Session = Depends(get_db)):
     try:
-        user = register_user(db, body.email, body.password)
-        return user
+        data = register_user(db, username=body.username, email=body.email, password=body.password)
+        return data
     except ValueError as ex:
-        if str(ex) == "USER_EXISTS":
-            raise HTTPException(status_code=409, detail="USER_EXISTS")
+        msg = str(ex)
+        if msg == "EMAIL_EXISTS":
+            raise HTTPException(status_code=409, detail="EMAIL_EXISTS")
+        if msg == "USERNAME_EXISTS":
+            raise HTTPException(status_code=409, detail="USERNAME_EXISTS")
         raise
 
 @router.post("/login", openapi_extra={"security": []})
 def api_login(body: LoginIn, db: Session = Depends(get_db)):
-    return login_user(db, body.email, body.password)
+    try:
+        return login_user(db, identifier=body.identifier, password=body.password)
+    except ValueError as ex:
+        if str(ex) == "INVALID_CREDENTIALS":
+            raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
+        raise
 
 @router.post("/logout", status_code=204)
 def api_logout(response: Response):
     response.delete_cookie("access_token")
     return Response(status_code=204)
 
-
-# --- JSON: Passwort-Reset Start (mit 404/429 wie gewünscht)
+# --- JSON: Passwort-Reset Start (mit 404/429)
 class PasswordResetStartIn(BaseModel):
     email: EmailStr
 
@@ -56,7 +63,6 @@ def password_reset_start(body: PasswordResetStartIn, db: Session = Depends(get_d
     if result == "RATE_LIMIT":
         raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
     return {"status": "ok"}
-
 
 # ======================
 # WEB: HTML-Formulare
@@ -74,26 +80,25 @@ def login_form(request: Request):
 def login_submit(
     request: Request,
     response: Response,
-    email: str = Form(...),
+    identifier: str = Form(...),  # E-Mail ODER Benutzername
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    # Login validieren, um ggf. „Passwort vergessen?“ anzeigen zu können
-    user_ok = verify_login(db, email, password)
+    # Vorprüfung für UX (Fehlerhinweis/„Passwort vergessen?“)
+    user_ok = verify_login(db, identifier=identifier, password=password)
     if not user_ok:
         return templates.TemplateResponse(
             "login.html",
             {
                 "request": request,
                 "user": None,
-                "error": "E-Mail oder Passwort falsch.",
+                "error": "E-Mail/Benutzername oder Passwort falsch.",
                 "bad_login": True,
             },
             status_code=401,
         )
 
-    # Token setzen
-    data = login_user(db, email, password)
+    data = login_user(db, identifier=identifier, password=password)
     redirect_to = request.query_params.get("next") or "/dashboard"
     resp = RedirectResponse(url=redirect_to, status_code=303)
     resp.set_cookie(
@@ -102,15 +107,20 @@ def login_submit(
         httponly=True,
         samesite="lax",
         path="/",
-        # secure=True in PROD aktivieren
+        # TODO(PROD): secure=True setzen
     )
     return resp
 
-# --- Login alternative Variante (Fallback / Fehlerbehandlung kompakt)
+# --- Backup-Variante
 @router.post("/login-web-safe", openapi_extra={"security": []})
-def login_submit_safe(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+def login_submit_safe(
+    request: Request,
+    identifier: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
     try:
-        result = login_user(db, email, password)
+        result = login_user(db, identifier=identifier, password=password)
         resp = RedirectResponse(url="/dashboard", status_code=303)
         resp.set_cookie("access_token", result["token"], httponly=True, samesite="lax", secure=False)
         return resp
@@ -120,7 +130,6 @@ def login_submit_safe(request: Request, email: str = Form(...), password: str = 
             {"request": request, "error": "Login fehlgeschlagen", "bad_login": True},
             status_code=400
         )
-
 
 # --- Register Form
 @router.get("/register-web", response_class=HTMLResponse, openapi_extra={"security": []})
@@ -134,21 +143,29 @@ def register_form(request: Request):
 def register_submit(
     request: Request,
     response: Response,
+    username: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
     try:
-        _ = register_user(db, email, password)
+        _ = register_user(db, username=username, email=email, password=password)
     except ValueError as ex:
-        err = "E-Mail bereits vergeben." if str(ex) == "USER_EXISTS" else "Registrierung fehlgeschlagen."
+        msg = str(ex)
+        if msg == "EMAIL_EXISTS":
+            err = "E-Mail bereits vergeben."
+        elif msg == "USERNAME_EXISTS":
+            err = "Benutzername bereits vergeben."
+        else:
+            err = "Registrierung fehlgeschlagen."
         return templates.TemplateResponse(
             "register.html",
             {"request": request, "user": None, "error": err},
             status_code=400,
         )
 
-    data = login_user(db, email, password)
+    # direkt einloggen (per Benutzername)
+    data = login_user(db, identifier=username, password=password)
     resp = RedirectResponse(url="/dashboard", status_code=303)
     resp.set_cookie(
         key="access_token",
@@ -156,6 +173,7 @@ def register_submit(
         httponly=True,
         samesite="lax",
         path="/",
+        # TODO(PROD): secure=True setzen
     )
     return resp
 
@@ -165,8 +183,7 @@ def logout_web():
     resp.delete_cookie("access_token")
     return resp
 
-
-# --- Passwort-Reset Web-Form (Schritt 1)
+# --- Passwort-Reset (HTML)
 @router.get("/password-reset", response_class=HTMLResponse, openapi_extra={"security": []})
 def reset_request_form(request: Request):
     return templates.TemplateResponse(
@@ -176,14 +193,12 @@ def reset_request_form(request: Request):
 
 @router.post("/password-reset", response_class=HTMLResponse, openapi_extra={"security": []})
 def reset_request_submit(request: Request, email: str = Form(...), db: Session = Depends(get_db)):
-    # kein Enumeration-Leak
-    start_password_reset(db, email)
+    start_password_reset(db, email)  # kein Enumeration-Leak
     return templates.TemplateResponse(
         "password_reset_request.html",
         {"request": request, "sent": True},
     )
 
-# --- Passwort-Reset Web-Form (Variante mit explizitem Feedback)
 @router.post("/password-reset/start-web", openapi_extra={"security": []})
 def password_reset_start_web(email: str = Form(...), db: Session = Depends(get_db)):
     result = start_password_reset(db, email)
@@ -193,8 +208,6 @@ def password_reset_start_web(email: str = Form(...), db: Session = Depends(get_d
         raise HTTPException(status_code=429, detail="Bitte erneut in 10 Minuten versuchen.")
     return {"status": "ok"}
 
-
-# --- Passwort-Reset Schritt 2: Neues Passwort setzen
 @router.get("/password-reset/confirm", response_class=HTMLResponse, openapi_extra={"security": []})
 def reset_confirm_form(request: Request, token: str):
     return templates.TemplateResponse(
@@ -219,7 +232,7 @@ def reset_confirm_submit(
             "request": request,
             "token": token,
             "ok": False,
-            "error": "Token ungültig/abgelaufen oder Passwort zu schwach.",
+            "error": "Token ungültig/abgelaufen oder Passwort-Policy verletzt.",
         },
         status_code=400,
     )

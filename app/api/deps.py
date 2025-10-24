@@ -1,70 +1,107 @@
 # app/api/deps.py
+from __future__ import annotations
+from dataclasses import dataclass
 from typing import Optional
-from fastapi import Depends, HTTPException, Request, Header
-from sqlalchemy.orm import Session
-import jwt
 
-from app.core.config import settings
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from jwt import ExpiredSignatureError, InvalidTokenError
+
+from app.core.security import jwt_service
 from app.db.database import get_db
 from app.repositories.user_repo import get_by_id
 
+# ----------------------------------------------------------
+# Security
+# ----------------------------------------------------------
+security = HTTPBearer(auto_error=False)
+
+@dataclass
 class CurrentUser:
-    def __init__(self, id: int, email: str):
-        self.id = id
-        self.email = email
+    id: int
+    username: str
+    email: str
+    role_id: int
+    display_name: Optional[str] = None
 
-# ---- intern: Token decodieren & User laden ----
-def _decode_token(token: str) -> int:
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        sub = payload.get("sub")
-        return int(sub)
-    except Exception:
-        raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "Invalid token"})
 
-def _load_user(db: Session, user_id: int) -> CurrentUser:
+# ----------------------------------------------------------
+# Helper
+# ----------------------------------------------------------
+def _user_from_payload(db: Session, payload: dict) -> CurrentUser:
+    user_id = int(payload.get("sub", 0) or 0)
     user = get_by_id(db, user_id)
     if not user:
-        raise HTTPException(status_code=401, detail={"code": "NO_USER", "message": "User not found"})
-    return CurrentUser(id=user.id, email=user.email)
+        raise HTTPException(status_code=401, detail="User not found")
 
-# ---- API: Authorization: Bearer <token> ----
-def get_current_user(
-    authorization: Optional[str] = Header(None),
-    db: Session = Depends(get_db),
-) -> CurrentUser:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail={"code": "NO_AUTH", "message": "Missing Bearer token"})
-    token = authorization.split(" ", 1)[1]
-    uid = _decode_token(token)
-    return _load_user(db, uid)
+    return CurrentUser(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role_id=user.role_id,
+        display_name=getattr(user, "display_name", None),
+    )
 
-# ---- WEB: JWT aus HttpOnly-Cookie 'access_token' ----
+
+def _decode_or_401(token: str, db: Session) -> CurrentUser:
+    try:
+        payload = jwt_service.decode_token(token)
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return _user_from_payload(db, payload)
+
+
+# ----------------------------------------------------------
+# Cookie-basierte Authentifizierung (Web)
+# ----------------------------------------------------------
 def get_current_user_web(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ) -> CurrentUser:
     token = request.cookies.get("access_token")
     if not token:
-        raise HTTPException(status_code=401, detail={"code": "NO_AUTH", "message": "Login required"})
-    uid = _decode_token(token)
-    return _load_user(db, uid)
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return _decode_or_401(token, db)
 
-# ---- ANY: akzeptiert Cookie ODER Bearer ----
-def get_current_user_any(
-    request: Request,
-    authorization: Optional[str] = Header(None),
+
+# ----------------------------------------------------------
+# Bearer-Token-Authentifizierung (API)
+# ----------------------------------------------------------
+def get_current_user_api(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> CurrentUser:
-    # 1) Cookie?
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return _decode_or_401(credentials.credentials, db)
+
+
+# ----------------------------------------------------------
+# Flexibel: erst Bearer prüfen, sonst Cookie
+# ----------------------------------------------------------
+def get_current_user_any(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> CurrentUser:
+    if credentials and credentials.scheme.lower() == "bearer":
+        return _decode_or_401(credentials.credentials, db)
     token = request.cookies.get("access_token")
     if token:
-        uid = _decode_token(token)
-        return _load_user(db, uid)
-    # 2) Bearer?
-    if authorization and authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1]
-        uid = _decode_token(token)
-        return _load_user(db, uid)
-    # nix gefunden
-    raise HTTPException(status_code=401, detail={"code": "NO_AUTH", "message": "Login required"})
+        return _decode_or_401(token, db)
+    raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+# ----------------------------------------------------------
+# Legacy-Alias für alte Routen
+# ----------------------------------------------------------
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> CurrentUser:
+    return get_current_user_web(request, db)

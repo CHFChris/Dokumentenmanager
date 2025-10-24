@@ -5,87 +5,115 @@
 <div class="container mx-auto max-w-6xl py-6 px-4">
 
   <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-semibold">Welcome to your Knowledge Hub</h1>
+    <h1 class="text-2xl font-semibold">
+      Willkommen zu deinem Dokumentenmanager –
+      {% if user %}
+        {{ user.username or user.email }}
+      {% else %}
+        Nutzer
+      {% endif %}
+    </h1>
     <form method="post" action="/auth/logout-web">
       <button class="px-4 py-2 rounded-md border">Logout</button>
     </form>
   </div>
 
-  <p class="text-gray-600 mb-6">Manage and search your documents efficiently</p>
+  <p class="text-gray-600 mb-6">Dokumente verwalten & blitzschnell finden.</p>
 
-  <!-- KPI Cards -->
+  {# ---------- KPI Cards ---------- #}
+  {% set total = stats.total if stats and 'total' in stats else 0 %}
+  {% set recent_week = stats.recent_week if stats and 'recent_week' in stats else 0 %}
+  {% set storage_bytes = stats.storage_bytes if stats and 'storage_bytes' in stats else 0 %}
+
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
     <div class="rounded-xl border p-5">
-      <div class="font-medium mb-2">Total Documents</div>
-      <div class="text-4xl font-bold">{{ stats.total }}</div>
-      <div class="text-xs text-gray-500 mt-1">+ in last month (demo)</div>
+      <div class="font-medium mb-2">Gesamt</div>
+      <div class="text-4xl font-bold">{{ total }}</div>
+      <div class="text-xs text-gray-500 mt-1">Dokumente</div>
     </div>
 
     <div class="rounded-xl border p-5">
-      <div class="font-medium mb-2">Recent Uploads</div>
-      <div class="text-4xl font-bold">{{ stats.recent_week }}</div>
-      <div class="text-xs text-gray-500 mt-1">This week</div>
+      <div class="font-medium mb-2">Uploads (7 Tage)</div>
+      <div class="text-4xl font-bold">{{ recent_week }}</div>
+      <div class="text-xs text-gray-500 mt-1">Diese Woche</div>
     </div>
 
     <div class="rounded-xl border p-5">
-      <div class="font-medium mb-2">Storage Used</div>
+      <div class="font-medium mb-2">Speicher</div>
       <div class="text-3xl font-bold">
-        {{ (stats.storage_bytes / (1024*1024*1024)) | round(2) }} GB
+        {% if storage_bytes >= 1024*1024*1024 %}
+          {{ (storage_bytes / (1024*1024*1024)) | round(2) }} GB
+        {% elif storage_bytes >= 1024*1024 %}
+          {{ (storage_bytes / (1024*1024)) | round(1) }} MB
+        {% elif storage_bytes >= 1024 %}
+          {{ (storage_bytes / 1024) | round(0) }} KB
+        {% else %}
+          {{ storage_bytes }} B
+        {% endif %}
       </div>
-      <div class="text-xs text-gray-500 mt-1">of 10 GB limit</div>
+      <div class="text-xs text-gray-500 mt-1">von 10 GB</div>
     </div>
   </div>
 
-  <!-- Recently Uploaded -->
+  {# ---------- Recently Uploaded ---------- #}
   <div class="rounded-xl border">
     <div class="p-5 border-b">
-      <div class="text-lg font-medium">Recently Uploaded</div>
-      <div class="text-sm text-gray-500">Your latest document uploads</div>
+      <div class="text-lg font-medium">Zuletzt hochgeladen</div>
+      <div class="text-sm text-gray-500">Deine neuesten Dateien</div>
     </div>
 
-    {% if stats.recent_items %}
+    {% set recent_items = stats.recent_items if stats and 'recent_items' in stats else [] %}
+    {% if recent_items %}
       <ul>
-        {% for item in stats.recent_items %}
+        {% for item in recent_items %}
           <li class="flex items-center justify-between p-5 border-b last:border-0">
-            <div class="flex items-center gap-3">
-              <div>
-                <div class="font-medium">
-                  <a href="/documents/{{ item.id }}">{{ item.name }}</a>
-                </div>
-                <div class="text-xs text-gray-500">
-                  {% if item.created_at %}{{ item.created_at.strftime("%d %b %Y %H:%M") }}{% endif %}
-                </div>
+            <div>
+              <div class="font-medium">
+                <a class="underline" href="/documents/{{ item.id }}">{{ item.name }}</a>
+              </div>
+              <div class="text-xs text-gray-500">
+                {% if item.created_at %}
+                  {{ item.created_at.strftime("%d.%m.%Y %H:%M") }}
+                {% endif %}
               </div>
             </div>
             <div class="text-sm text-gray-500">
-              <a class="underline" href="/documents/{{ item.id }}">Open</a>
+              <a class="underline" href="/documents/{{ item.id }}">Öffnen</a>
             </div>
           </li>
         {% endfor %}
       </ul>
     {% else %}
-      <div class="p-5 text-sm text-gray-500">No recent uploads yet.</div>
+      <div class="p-5 text-sm text-gray-500">Noch keine Uploads.</div>
     {% endif %}
   </div>
 
+  {# ---------- Latest Documents (paged) ---------- #}
   {% if docs and docs.items %}
     <div class="rounded-xl border mt-6">
       <div class="p-5 border-b">
-        <div class="text-lg font-medium">Latest Documents</div>
+        <div class="text-lg font-medium">Alle Dokumente</div>
       </div>
-      <div class="p-5">
-        <table class="table" role="grid" style="width:100%">
-          <thead>
+      <div class="p-5 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-left border-b">
             <tr>
-              <th>Title</th><th>Type</th><th>Size</th><th>Actions</th>
+              <th class="py-2 pr-4">Titel</th>
+              <th class="py-2 pr-4">Typ</th>
+              <th class="py-2 pr-4">Größe</th>
+              <th class="py-2">Aktionen</th>
             </tr>
           </thead>
           <tbody>
             {% for d in docs.items %}
-            <tr>
-              <td><a href="/documents/{{ d.id }}">{{ d.name }}</a></td>
-              <td>{{ (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' }}</td>
-              <td>
+            <tr class="border-b last:border-0">
+              <td class="py-2 pr-4">
+                <a class="underline" href="/documents/{{ d.id }}">{{ d.name }}</a>
+              </td>
+              <td class="py-2 pr-4">
+                {% if '.' in d.name %}{{ (d.name.rsplit('.',1)[-1]).upper() }}{% else %}FILE{% endif %}
+              </td>
+              <td class="py-2 pr-4">
                 {% if d.size >= 1024*1024 %}
                   {{ (d.size/1024/1024)|round(2) }} MB
                 {% elif d.size >= 1024 %}
@@ -94,11 +122,26 @@
                   {{ d.size }} B
                 {% endif %}
               </td>
-              <td><a href="/documents/{{ d.id }}/download" class="underline">Download</a></td>
+              <td class="py-2">
+                <a class="underline mr-3" href="/documents/{{ d.id }}">Öffnen</a>
+                <a class="underline" href="/documents/{{ d.id }}/download">Download</a>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
+
+        {% if docs.page or docs.pages %}
+          <div class="mt-4 flex gap-2">
+            {% if docs.page > 1 %}
+              <a class="underline" href="?page={{ docs.page - 1 }}">« Zurück</a>
+            {% endif %}
+            <span class="text-gray-600">Seite {{ docs.page }} von {{ docs.pages }}</span>
+            {% if docs.page < docs.pages %}
+              <a class="underline" href="?page={{ docs.page + 1 }}">Weiter »</a>
+            {% endif %}
+          </div>
+        {% endif %}
       </div>
     </div>
   {% endif %}

@@ -110,6 +110,7 @@ def root_to_dashboard() -> RedirectResponse:
 # -------------------------------------------------------------
 # DASHBOARD (KPIs + letzte Uploads)
 # -------------------------------------------------------------
+# app/web/routes_web.py
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(
     request: Request,
@@ -117,13 +118,12 @@ def dashboard(
     db: Session = Depends(get_db),
 ):
     stats = dashboard_stats(db, user.id)
-    # kleine Liste für Karte/Tabelle
     docs = list_documents(db, user.id, q=None, limit=10, offset=0)
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
-            "user": user,
+            "user": user,          # ← enthält username (über get_current_user_web)
             "stats": stats,
             "docs": docs,
             "q": "",

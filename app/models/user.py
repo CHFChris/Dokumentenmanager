@@ -10,24 +10,25 @@ from app.db.database import Base
 if TYPE_CHECKING:
     from app.models.document import Document  # nur für Typ-Hinweise
 
+
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    # Rollen: 1=Standard, 2=Admin (Beispiel)
+    # Rollen: 1 = Standard, 2 = Admin (Beispiel)
     role_id: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
 
-    # Benutzername: Pflicht & eindeutig (Login- oder Anzeigehandle)
+    # Benutzername: Pflicht & eindeutig (Login oder Handle)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
 
     # E-Mail: Pflicht & eindeutig
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
-    # Hashlänge 255 ist ausreichend für Argon2/bcrypt_sha256
+    # Passwort-Hash (z. B. Argon2 / bcrypt)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    # Optionaler Anzeigename (frei formatierbar)
+    # Optionaler Anzeigename
     display_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     # Beziehungen

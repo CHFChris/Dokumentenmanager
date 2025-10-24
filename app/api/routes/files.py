@@ -1,9 +1,12 @@
 # app/api/routes/documents.py
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from sqlalchemy.orm import Session
-from starlette.responses import FileResponse
 
-from app.api.deps import get_current_user, CurrentUser
+# Wichtig: Web-Cookie-Auth verwenden (oder auf get_current_user_api wechseln, wenn Bearer-Auth gewünscht)
+from app.api.deps import get_current_user_web as get_current_user, CurrentUser
+
 from app.db.database import get_db
 from app.schemas.document import DocumentListOut, DocumentOut
 from app.services.document_service import (

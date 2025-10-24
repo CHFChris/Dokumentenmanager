@@ -170,7 +170,7 @@ code, .text-xs, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco
 
 /* ----------------------------------------------------------- */
 /* Tailwind-Compat: mappe harte Farbutilities auf Variablen    */
-/* -> So werden auch alte Templates dunkel/hell                 */
+/* -> So werden auch alte Templates dunkel/hell                */
 /* ----------------------------------------------------------- */
 .tw-compat .bg-white        { background-color: var(--card) !important; }
 .tw-compat .bg-white\/80    { background-color: color-mix(in oklab, var(--card) 80%, transparent) !important; }

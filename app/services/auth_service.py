@@ -1,50 +1,48 @@
+# app/services/auth_service.py
+from __future__ import annotations
+from datetime import timedelta
+from typing import Dict
 from sqlalchemy.orm import Session
-from passlib.hash import argon2
-from datetime import datetime, timedelta, timezone
-import jwt  # PyJWT
 
-from app.repositories.user_repo import get_by_email, create_user
+from app.repositories.user_repo import (
+    get_by_email, get_by_username, get_by_identifier, create_user
+)
+from app.core.security import hash_password, verify_password, jwt_service  # <- HIER!
 from app.core.config import settings
 
-ALGORITHM = "HS256"
 
-def _create_access_token(user_id: int) -> str:
-    expire_minutes = getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 60)
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": str(user_id),
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=expire_minutes)).timestamp()),
-    }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
-
-def register_user(db: Session, email: str, password: str) -> dict:
-    # existiert E-Mail bereits?
+def register_user(db: Session, *, username: str, email: str, password: str) -> Dict:
     if get_by_email(db, email):
-        raise ValueError("USER_EXISTS")
+        raise ValueError("EMAIL_EXISTS")
+    if get_by_username(db, username):
+        raise ValueError("USERNAME_EXISTS")
+    pwd_hash = hash_password(password)
+    user = create_user(db, username=username, email=email, password_hash=pwd_hash, role_id=1)
+    return {"id": user.id, "username": user.username, "email": user.email}
 
-    # richtig:
-    pwd_hash = argon2.hash(password)
 
-    user = create_user(db, email, pwd_hash)
-    return {"id": user.id, "email": user.email}
+def verify_login(db: Session, *, identifier: str, password: str) -> bool:
+    user = get_by_identifier(db, identifier)
+    return bool(user and verify_password(password, user.password_hash))
 
-def verify_login(db: Session, email: str, password: str):
-    user = get_by_email(db, email)
-    if not user:
-        return None
-    # diese Zeile gehört IN die Funktion und nutzt bcrypt_sha256
-    if not argon2.verify(password, user.password_hash):
-        return None
-    return user
 
-def login_user(db: Session, email: str, password: str) -> dict:
-    user = verify_login(db, email, password)
-    if not user:
+def login_user(db: Session, *, identifier: str, password: str) -> Dict:
+    user = get_by_identifier(db, identifier)
+    if not user or not verify_password(password, user.password_hash):
         raise ValueError("INVALID_CREDENTIALS")
 
-    token = _create_access_token(user.id)
+    minutes = getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 60)
+    token = jwt_service.create_token(
+        subject=user.id,
+        expires_delta=timedelta(minutes=minutes),
+        claims={"username": user.username, "email": user.email, "role_id": user.role_id},
+    )
     return {
         "token": token,
-        "user": {"id": user.id, "email": user.email}
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role_id": user.role_id,
+        },
     }

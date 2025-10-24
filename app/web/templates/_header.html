@@ -1,0 +1,35 @@
+<header class="w-full border-b border-gray-200 bg-white dark:bg-gray-900">
+  <nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+    <!-- Brand left -->
+    <a href="/dashboard" class="flex items-center gap-2 font-semibold text-gray-900 dark:text-gray-100">
+      <img
+        src="{{ url_for('static', path='img/logo.png') }}"
+        alt="Logo"
+        style="height:24px;width:24px;display:block"
+      />
+      <span>SPKH</span>
+    </a>
+
+    <!-- Primary nav -->
+    <div class="flex items-center gap-6 text-sm">
+      <a href="/dashboard" class="{{ 'font-semibold' if current=='dashboard' else 'text-gray-600 dark:text-gray-300' }}">Dashboard</a>
+      <a href="/upload" class="{{ 'font-semibold' if current=='upload' else 'text-gray-600 dark:text-gray-300' }}">Upload</a>
+      <a href="/documents" class="{{ 'font-semibold' if current=='documents' else 'text-gray-600 dark:text-gray-300' }}">Documents</a>
+      <a href="/search" class="{{ 'font-semibold' if current=='search' else 'text-gray-600 dark:text-gray-300' }}">Search</a>
+    </div>
+
+    <!-- Right side: Theme + User + Logout -->
+    <div class="flex items-center gap-3">
+      <button id="theme-toggle" class="px-2 py-1 rounded border text-sm" aria-pressed="false" title="Theme umschalten">🌙</button>
+
+      {% if user %}
+        <span class="text-sm text-gray-700 dark:text-gray-300">{{ user.username or user.email }}</span>
+        <form method="post" action="/auth/logout-web">
+          <button class="px-3 py-1 rounded-md border text-sm">Logout</button>
+        </form>
+      {% else %}
+        <a class="text-sm underline" href="/auth/login-web">Login</a>
+      {% endif %}
+    </div>
+  </nav>
+</header>
