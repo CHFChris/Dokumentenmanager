@@ -1,8 +1,9 @@
 # app/schemas/auth.py
 from __future__ import annotations
 from typing import Optional, Annotated
-from pydantic import BaseModel, EmailStr, Field
-from pydantic import StringConstraints  # v2: String-Constraints über Annotated
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import StringConstraints
+import re
 
 # ---------- Gemeinsame Typen ----------
 UsernameStr = Annotated[
@@ -19,7 +20,7 @@ PasswordStr = Annotated[
     str,
     StringConstraints(
         min_length=8,
-        max_length=64  # Policy ≙ Hashing
+        max_length=64
     )
 ]
 
@@ -30,6 +31,17 @@ class RegisterIn(BaseModel):
     )
     email: EmailStr
     password: PasswordStr
+
+    @field_validator("password")
+    @classmethod
+    def password_policy(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        if not re.search(r"[A-Za-z]", v):
+            raise ValueError("Password must contain at least one letter.")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit.")
+        return v
 
 # ---------- Login ----------
 class LoginIn(BaseModel):
@@ -44,6 +56,17 @@ class PasswordResetCompleteIn(BaseModel):
     token: str = Field(min_length=16, max_length=512)
     new_password: PasswordStr
 
+    @field_validator("new_password")
+    @classmethod
+    def password_policy(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        if not re.search(r"[A-Za-z]", v):
+            raise ValueError("Password must contain at least one letter.")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit.")
+        return v
+
 # ---------- User-DTOs ----------
 class UserOut(BaseModel):
     id: int
@@ -52,7 +75,7 @@ class UserOut(BaseModel):
     display_name: Optional[str] = None
     role_id: int
 
-    model_config = {"from_attributes": True}  # ORM-kompatibel
+    model_config = {"from_attributes": True}
 
 class UserLiteOut(BaseModel):
     id: int

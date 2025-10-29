@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>E-Mail-Verifizierung erforderlich</h1>
+<p>Wir haben dir einen Verifizierungslink an <strong>{{ email }}</strong> gesendet.</p>
+{% if not mail_sent %}
+<p>Achtung: Der Versand der E-Mail ist fehlgeschlagen. Bitte klicke auf "E-Mail erneut senden".</p>
+{% endif %}
+<form method="post" action="/auth/verify/resend">
+  <input type="hidden" name="email" value="{{ email }}">
+  <button type="submit">E-Mail erneut senden</button>
+</form>
+<p>Diese Seite aktualisiert sich automatisch, sobald du verifiziert bist.</p>
+<script>
+  const email = "{{ email }}";
+  async function poll() {
+    try {
+      const r = await fetch(`/auth/verify/check?email=${encodeURIComponent(email)}`, {cache: "no-store"});
+      const j = await r.json();
+      if (j.verified) {
+        window.location.href = "/auth/login-web?verified=ok";
+        return;
+      }
+    } catch (e) {}
+    setTimeout(poll, 4000);
+  }
+  poll();
+</script>
+{% endblock %}

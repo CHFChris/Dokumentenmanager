@@ -8,6 +8,24 @@
     <div class="mb-3 text-red-600 text-sm">{{ error }}</div>
   {% endif %}
 
+  {# Hinweisblock fuer unverifizierte Accounts (de/en Meldung abgedeckt) #}
+  {% if error and ("not verifiziert" in error.lower() or error.strip() == "Account not verified") %}
+    <div class="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+      Dein Konto ist noch nicht bestaetigt. Pruefe deine E-Mails.
+      <form method="post" action="/auth/verify/resend" class="mt-2 flex gap-2">
+        <input
+          type="email"
+          name="email"
+          value="{{ last_email or '' }}"
+          placeholder="E-Mail"
+          required
+          class="border px-2 py-1 rounded w-full"
+        >
+        <button class="px-3 py-1 border rounded">Verifizierungs-E-Mail erneut senden</button>
+      </form>
+    </div>
+  {% endif %}
+
   <form method="post" action="/auth/login-web" class="space-y-4">
     <div>
       <label for="identifier" class="block text-sm mb-1 font-medium">E-Mail oder Benutzername</label>
@@ -16,6 +34,7 @@
         name="identifier"
         type="text"
         required
+        value="{{ last_email or '' }}"
         class="w-full border rounded-md p-2 focus:outline-none focus:ring focus:border-blue-400"
       />
     </div>
