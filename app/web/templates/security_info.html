@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="card" style="max-width: 900px; margin: auto; padding: 32px;">
+    <h1 class="text-xl font-semibold mb-4">Sicherheitskriterien & Datenschutz</h1>
+
+    <p class="text-sm text-gray-600 mb-6">
+        Diese Seite beschreibt die technischen und organisatorischen Maßnahmen der Anwendung.
+        Sie dient als Informationsquelle für Nutzer und entspricht der geforderten Dokumentation
+        für Lehrkräfte.
+    </p>
+
+    <h2 class="text-lg font-semibold mt-6 mb-2">Passwortsicherheit</h2>
+    <ul class="text-sm text-gray-700 leading-relaxed">
+        <li>Mindestens 8 Zeichen</li>
+        <li>Mindestens 1 Zahl</li>
+        <li>Mindestens 1 Sonderzeichen (!?*$ etc.)</li>
+        <li>Password-Hashing mit bcrypt</li>
+        <li>Keine Speicherung von Klartext-Passwörtern</li>
+    </ul>
+
+    <h2 class="text-lg font-semibold mt-6 mb-2">Zugriffskontrolle</h2>
+    <ul class="text-sm text-gray-700 leading-relaxed">
+        <li>Jeder Nutzer sieht ausschließlich seine eigenen Dokumente</li>
+        <li>Token-basierte Authentifizierung (JWT)</li>
+        <li>Session-Handling für Webanmeldung</li>
+    </ul>
+
+    <h2 class="text-lg font-semibold mt-6 mb-2">Dokumenten-Sicherheit</h2>
+    <ul class="text-sm text-gray-700 leading-relaxed">
+        <li>Separates Datei-Verzeichnis pro Nutzer (Isolation)</li>
+        <li>Dateiversionierung zur Nachvollziehbarkeit</li>
+        <li>Keine öffentlichen URLs, alle Downloads über Auth</li>
+    </ul>
+
+    <h2 class="text-lg font-semibold mt-6 mb-2">Datenschutz</h2>
+    <ul class="text-sm text-gray-700 leading-relaxed">
+        <li>Daten werden ausschließlich lokal verarbeitet</li>
+        <li>Keine Übertragung an externe Services</li>
+        <li>Minimale Datenspeicherung (Name, E-Mail, Dokumente)</li>
+        <li>Logische Trennung der Benutzerkonten</li>
+    </ul>
+
+    <h2 class="text-lg font-semibold mt-6 mb-2">Technische Maßnahmen</h2>
+    <ul class="text-sm text-gray-700 leading-relaxed">
+        <li>Hashing aller Dateien (SHA256) zur Integritätsprüfung</li>
+        <li>Bereinigung von Dateinamen (Pfadschutz)</li>
+        <li>Validierung aller Uploads</li>
+        <li>Atomare Dateioperationen (Rename, Delete, Version)</li>
+    </ul>
+</div>
+
+{% endblock %}

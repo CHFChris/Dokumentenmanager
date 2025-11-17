@@ -6,16 +6,32 @@ import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, Depends, Request, Form, File, UploadFile, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    Request,
+    Form,
+    File,
+    UploadFile,
+    HTTPException,
+    Query,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
 
-# Services (bestehende, zentrierte Logik)
+# Category-Repo (für Filter / Auswahl)
+from app.repositories.category_repo import (
+    list_categories_for_user,
+    create_category,
+    delete_category,
+    rename_category,
+)
+
+# Services (zentrierte Logik)
 from app.services.document_service import (
     dashboard_stats,
     list_documents,
@@ -43,7 +59,6 @@ from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 # -------------------------------------------------------------
 router = APIRouter()
 
-# Pfad zu den Templates: /app/web/templates (robust relativ zur Datei)
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -65,16 +80,11 @@ def _ext_of(name: str) -> str:
 
 
 def _new_storage_path_for_version(user_id: int, base_name: str) -> str:
-    """
-    Erzeugt einen neuen Zielpfad für eine Version im User-Verzeichnis.
-    Nutzt Zeitstempel + Basename und stellt Kollisionfreiheit her.
-    """
     base = os.path.basename(base_name)
     stem, ext = os.path.splitext(base)
     stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
     candidate = f"{stem}.{stamp}{ext.lower()}"
     target = os.path.join(_user_dir(user_id), candidate)
-    # sehr unwahrscheinlich, aber sicher ist sicher:
     while os.path.exists(target):
         stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
         candidate = f"{stem}.{stamp}{ext.lower()}"
@@ -110,7 +120,6 @@ def root_to_dashboard() -> RedirectResponse:
 # -------------------------------------------------------------
 # DASHBOARD (KPIs + letzte Uploads)
 # -------------------------------------------------------------
-# app/web/routes_web.py
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(
     request: Request,
@@ -118,14 +127,18 @@ def dashboard(
     db: Session = Depends(get_db),
 ):
     stats = dashboard_stats(db, user.id)
-    docs = list_documents(db, user.id, q=None, limit=10, offset=0)
+
+    # DocumentListOut -> echte Liste für das Template
+    docs_result = list_documents(db, user.id, q=None, limit=10, offset=0)
+    docs_list = getattr(docs_result, "items", docs_result)
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
-            "user": user,          # ← enthält username (über get_current_user_web)
+            "user": user,
             "stats": stats,
-            "docs": docs,
+            "docs": docs_list,
             "q": "",
             "error": None,
             "active": "dashboard",
@@ -134,16 +147,23 @@ def dashboard(
 
 
 # -------------------------------------------------------------
-# UPLOAD
+# UPLOAD (mit Kategorien)
 # -------------------------------------------------------------
 @router.get("/upload", response_class=HTMLResponse)
 def upload_page(
     request: Request,
     user: CurrentUser = Depends(get_current_user_web),
+    db: Session = Depends(get_db),
 ):
+    categories = list_categories_for_user(db, user.id)
     return templates.TemplateResponse(
         "upload.html",
-        {"request": request, "user": user, "active": "upload"},
+        {
+            "request": request,
+            "user": user,
+            "active": "upload",
+            "categories": categories,
+        },
     )
 
 
@@ -151,39 +171,121 @@ def upload_page(
 async def upload_web(
     request: Request,
     file: UploadFile = File(...),
+    category_id: Optional[str] = Form(None),  # String, wird unten geparst
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
     try:
-        _ = upload_document(db, user.id, file.filename, file.file)
+        try:
+            cat_id: Optional[int] = int(category_id) if category_id else None
+        except ValueError:
+            cat_id = None
+
+        upload_document(
+            db=db,
+            user_id=user.id,
+            original_name=file.filename,
+            file_obj=file.file,
+            category_id=cat_id,
+        )
         return RedirectResponse(url="/documents", status_code=303)
     except Exception as ex:
+        categories = list_categories_for_user(db, user.id)
         return templates.TemplateResponse(
             "upload.html",
-            {"request": request, "user": user, "error": str(ex), "active": "upload"},
+            {
+                "request": request,
+                "user": user,
+                "error": str(ex),
+                "active": "upload",
+                "categories": categories,
+            },
             status_code=400,
         )
 
 
 # -------------------------------------------------------------
-# DOCUMENTS – Liste & Suche
+# Kategorien im Web: anlegen / löschen / umbenennen
+# -------------------------------------------------------------
+@router.post("/categories/create-web", include_in_schema=False)
+def create_category_web(
+    request: Request,
+    name: str = Form(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    name_clean = (name or "").strip()
+    if not name_clean:
+        referer = request.headers.get("referer") or "/documents"
+        return RedirectResponse(url=referer, status_code=303)
+
+    create_category(db, user.id, name_clean)
+
+    referer = request.headers.get("referer") or "/documents"
+    return RedirectResponse(url=referer, status_code=303)
+
+
+@router.post("/categories/delete-web", include_in_schema=False)
+def delete_category_web(
+    category_id: int = Form(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    delete_category(db, user.id, category_id)
+    return RedirectResponse(url="/documents", status_code=303)
+
+
+@router.post("/categories/rename-web", include_in_schema=False)
+def rename_category_web(
+    category_id: int = Form(...),
+    new_name: str = Form(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    rename_category(db, user.id, category_id, new_name.strip())
+    return RedirectResponse(url="/documents", status_code=303)
+
+
+# -------------------------------------------------------------
+# DOCUMENTS – Liste & Suche (mit Kategorie-Filter)
 # -------------------------------------------------------------
 @router.get("/documents", response_class=HTMLResponse)
 def documents_page(
     request: Request,
     q: Optional[str] = None,
+    category_id: Optional[str] = Query(None),  # String, wird unten geparst
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    data = list_documents(db, user.id, q=q, limit=200, offset=0)
+    try:
+        cat_id: Optional[int] = int(category_id) if category_id else None
+    except ValueError:
+        cat_id = None
+
+    result = list_documents(
+        db=db,
+        user_id=user.id,
+        q=q,
+        limit=200,
+        offset=0,
+        category_id=cat_id,
+    )
+
+    # DocumentListOut -> Liste für Template
+    docs = result.items
+
+    categories = list_categories_for_user(db, user.id)
+
     return templates.TemplateResponse(
         "documents.html",
         {
             "request": request,
             "user": user,
-            "docs": data,
+            "docs": docs,
             "q": q or "",
             "active": "documents",
+            "categories": categories,
+            "selected_category_id": category_id,
         },
     )
 
@@ -199,10 +301,36 @@ def document_detail_page(
     user: CurrentUser = Depends(get_current_user_web),
 ):
     doc = get_document_detail(db, user.id, doc_id)
+    categories = list_categories_for_user(db, user.id)
+
     return templates.TemplateResponse(
         "document_detail.html",
-        {"request": request, "user": user, "doc": doc, "active": "documents"},
+        {
+            "request": request,
+            "user": user,
+            "doc": doc,
+            "categories": categories,
+            "active": "documents",
+        },
     )
+
+
+@router.post("/documents/{doc_id}/set-category-web", include_in_schema=False)
+def document_set_category(
+    doc_id: int,
+    category_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    doc = get_document_for_user(db, user.id, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    doc.category_id = category_id if category_id else None
+    db.add(doc)
+    db.commit()
+
+    return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
 
 
 @router.get("/documents/{doc_id}/download")
@@ -235,9 +363,18 @@ def document_delete(
     return RedirectResponse(url="/documents", status_code=303)
 
 
+@router.post("/files/{doc_id}/delete-web", include_in_schema=False)
+def file_delete_compat(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    remove_document(db, user.id, doc_id)
+    return RedirectResponse(url="/documents", status_code=303)
+
+
 # -------------------------------------------------------------
 # DOCUMENT VERSIONS – Liste, Upload, Restore
-#   UI-Links: /documents/{id}/versions
 # -------------------------------------------------------------
 @router.get("/documents/{doc_id}/versions", response_class=HTMLResponse)
 def document_versions_page(
@@ -246,9 +383,7 @@ def document_versions_page(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    # Grunddaten (für Header/Buttons)
-    doc = get_document_detail(db, user.id, doc_id)  # dict
-    # Versionen aus DB (ORM → dicts fürs Template)
+    doc = get_document_detail(db, user.id, doc_id)
     db_versions = list_versions_for_document(db, doc_id, owner_id=user.id)
     versions = _format_versions_list(db_versions)
 
@@ -272,30 +407,19 @@ def document_upload_version(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    """
-    Legt eine neue Version an:
-    - legt Datei im User-Ordner ab (neuer Pfad, mit Zeitstempel)
-    - berechnet Größe + SHA256
-    - add_version(): erzeugt Version in DB und spiegelt aktuellen Stand ins Document
-    """
-    # Ownership sichern & Basismeta holen
     doc = get_document_for_user(db, user.id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Zielpfad (mit Zeitstempel) im User-Ordner
     base_name = doc.filename or file.filename
     target_path = _new_storage_path_for_version(user.id, base_name)
 
-    # Datei speichern & Hash berechnen
     size_bytes = save_stream_to_file(file.file, target_path)
     with open(target_path, "rb") as fh:
         sha256_hex = sha256_of_stream(fh)
 
-    # MIME aus Dateiname / UploadFile ggf. verwenden
     mime = getattr(file, "content_type", None) or doc.mime_type
 
-    # Repo: neue Version erzeugen (inkl. Spiegelung ins Document)
     add_version(
         db=db,
         doc=doc,
@@ -316,24 +440,16 @@ def document_restore_version(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    """
-    Stellt eine frühere Version wieder her, indem eine NEUE Version angelegt wird,
-    die auf exakt denselben Storage-Pfad zeigt (keine Dateiduplizierung).
-    """
-    # Version + Ownership prüfen
     ver = get_version_owned(db, doc_id=doc_id, version_id=version_id, owner_id=user.id)
     if not ver:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    # Zugehöriges Dokument laden
     doc = get_document_for_user(db, user.id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Wiederherstellungs-Note
     note = f"Restore from v{getattr(ver, 'version_number', '?')}"
 
-    # Neue Version, die auf denselben Pfad zeigt (effizient & nachvollziehbar)
     add_version(
         db=db,
         doc=doc,
@@ -366,5 +482,19 @@ def search_page(
             "q": q or "",
             "results": results,
             "active": "search",
+        },
+    )
+
+@router.get("/security-info", response_class=HTMLResponse)
+def security_info_page(
+    request: Request,
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    return templates.TemplateResponse(
+        "security_info.html",
+        {
+            "request": request,
+            "user": user,
+            "active": "security-info",
         },
     )

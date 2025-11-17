@@ -130,8 +130,18 @@ tbody tr:hover { background: var(--hover); }
 }
 .btn:hover, button:hover { background: var(--hover); }
 .btn:active, button:active { transform: translateY(1px); }
-.btn.primary { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
-.btn.primary:hover { filter: brightness(0.95); }
+
+/* hier angepasst: Buttons nutzen jetzt den Akzent statt der sehr dunklen Primary-Farbe */
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.btn.primary:hover {
+  background: color-mix(in oklab, var(--accent) 90%, white 10%);
+}
+
+/* optional weiterhin vorhanden */
 .btn.ghost { background: transparent; }
 
 /* Dropzone / Empty */

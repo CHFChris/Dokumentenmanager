@@ -3,7 +3,9 @@
 
 {% block content %}
 <h2>Upload Document</h2>
-<p class="muted" style="margin-top:-4px;margin-bottom:18px;">Add new documents to your knowledge hub</p>
+<p class="muted" style="margin-top:-4px;margin-bottom:18px;">
+  Add new documents to your knowledge hub
+</p>
 
 {% if error %}
   <div class="mb-4 rounded-md border border-red-200 bg-red-50 text-red-800 px-4 py-2 text-sm">
@@ -18,7 +20,9 @@
 
       <div class="drop">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 5v14m0-14l-5 5m5-5l5 5" stroke="#6b7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 5v14m0-14l-5 5m5-5l5 5"
+                stroke="#6b7280" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round" />
         </svg>
 
         <label class="w-full">
@@ -30,18 +34,41 @@
 
       <div style="height:14px"></div>
 
-      <div class="row">
-        <label class="w-full" style="flex:1">
-          <select class="input" name="category">
-            <option value="">Select a category</option>
-            <option>Contracts</option>
-            <option>Finance</option>
-            <option>Notes</option>
+      <div class="row" style="gap: 10px;">
+        <label class="w-full" style="flex:2">
+          <select class="input" name="category_id">
+            <option value="">Alle Kategorien</option>
+
+            {% if categories and categories|length > 0 %}
+              {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
+              {% endfor %}
+            {% else %}
+              <option disabled>Keine Kategorien vorhanden</option>
+            {% endif %}
           </select>
         </label>
 
-        <button class="btn primary" type="submit">Upload Document</button>
+        <button class="btn" type="submit" style="flex:1">
+          Upload Document
+        </button>
       </div>
+    </form>
+
+    <div style="height:18px"></div>
+
+    <form action="/categories/create-web" method="post" class="row" style="gap:10px;">
+      <input
+        class="input"
+        type="text"
+        name="name"
+        placeholder="Neue Kategorie"
+        required
+        style="flex:2"
+      >
+      <button class="btn light" type="submit" style="flex:1">
+        Kategorie anlegen
+      </button>
     </form>
   </div>
 </div>

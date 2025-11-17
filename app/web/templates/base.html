@@ -5,16 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>{% block title %}SPKH{% endblock %}</title>
 
-  <!-- Favicon (lege eine Datei ab unter app/web/static/favicon.svg oder .ico) -->
   <link rel="icon" href="{{ url_for('static', path='favicon.svg') }}"/>
-
-  <!-- Theme CSS: WICHTIG über url_for('static', ...) -->
   <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}"/>
 
-  <!-- Tailwind per CDN (für Utility-Klassen in Templates) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Theme schon im <head> setzen (kein FOUC) -->
   <script>
     (function () {
       const KEY = 'dm_theme';
@@ -43,28 +38,46 @@
       else ''
   ) %}
 
-  <!-- Navbar -->
   <header class="nav">
     <div class="navwrap">
       <a href="/dashboard" class="brand flex items-center gap-2">
-        <img src="{{ url_for('static', path='img/logo.png') }}" alt="Logo" style="height:24px;width:24px;display:block" />
+        <img src="{{ url_for('static', path='img/logo.png') }}"
+             alt="Logo"
+             style="height:24px;width:24px;display:block" />
         SPKH
       </a>
 
       <div class="spacer"></div>
 
       {% if user %}
-        <nav class="navlinks">
+        <nav class="navlinks" style="gap: 6px;">
           <a href="/dashboard" class="navlink {{ 'active' if current=='dashboard' else '' }}">Dashboard</a>
           <a href="/upload" class="navlink {{ 'active' if current=='upload' else '' }}">Upload</a>
           <a href="/documents" class="navlink {{ 'active' if current=='documents' else '' }}">Documents</a>
-          <a href="/search" class="navlink {{ 'active' if current=='search' else '' }}">Search</a>
+          <a href="/security-info"
+             class="{% if active == 'security-info' %}navlink active{% else %}navlink{% endif %}">
+            Security-info
+          </a>
 
-          <button id="theme-toggle" class="btn ghost" aria-pressed="false" title="Toggle Theme">🌙</button>
+          <button id="theme-toggle"
+                  class="btn ghost"
+                  aria-pressed="false"
+                  title="Theme wechseln">
+            🌙
+          </button>
 
           <form method="post" action="/auth/logout-web">
-            <button class="btn">Logout</button>
+            <button class="btn" style="padding: 6px 12px;">Logout</button>
           </form>
+
+          <!-- Zahnrad -->
+          <button id="settings-toggle"
+                  type="button"
+                  class="btn ghost"
+                  aria-label="Einstellungen"
+                  style="padding: 6px 10px; border-radius: 999px; font-size: 14px;">
+            ⚙
+          </button>
         </nav>
       {% else %}
         <nav class="navlinks">
@@ -81,6 +94,135 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+
+  <!-- SETTINGS PANEL -->
+  <div id="settings-panel"
+       style="
+         position: fixed;
+         top: 64px;
+         right: 16px;
+         width: 320px;
+         z-index: 60;
+         display: none;
+       ">
+    <div class="card" style="box-shadow: var(--shadow-md); padding: 16px 18px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <div style="font-weight:600; font-size:14px;">Einstellungen</div>
+        <button type="button"
+                id="settings-close"
+                class="btn ghost"
+                style="padding:2px 6px; font-size:12px;">
+          ✕
+        </button>
+      </div>
+
+      <!-- Ansicht 1: Menü mit Optionen -->
+      <div id="settings-view-menu">
+        <div style="font-size:12px; color:var(--ink-muted); margin-bottom:10px;">
+          Wähle einen Bereich, den du anpassen möchtest.
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
+          <button type="button"
+                  class="btn"
+                  style="justify-content:flex-start; font-size:13px;"
+                  data-settings-open="design">
+            Hintergrund- und Schriftfarbe ändern
+          </button>
+          <button type="button"
+                  class="btn ghost"
+                  style="justify-content:flex-start; font-size:13px;"
+                  data-settings-open="account">
+            Account
+          </button>
+        </div>
+      </div>
+
+      <!-- Ansicht 2: Design-Box (Farben) -->
+      <div id="settings-view-design" style="display:none;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:600; font-size:13px;">Design anpassen</div>
+          <button type="button"
+                  class="btn ghost"
+                  id="settings-back-from-design"
+                  style="padding:2px 6px; font-size:11px;">
+            ← Zurück
+          </button>
+        </div>
+
+        <div style="font-size:12px; color:var(--ink-muted); margin-bottom:10px;">
+          Farben für Hintergrund, Boxen und Schrift anpassen.
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Hintergrund</span>
+            <input type="color" id="color-bg"
+                   style="width:42px; height:24px; border:none; background:transparent;" />
+          </label>
+
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Boxen / Karten</span>
+            <input type="color" id="color-card"
+                   style="width:42px; height:24px; border:none; background:transparent;" />
+          </label>
+
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Schrift</span>
+            <input type="color" id="color-ink"
+                   style="width:42px; height:24px; border:none; background:transparent;" />
+          </label>
+
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Primärfarbe</span>
+            <input type="color" id="color-primary"
+                   style="width:42px; height:24px; border:none; background:transparent;" />
+          </label>
+
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Akzent</span>
+            <input type="color" id="color-accent"
+                   style="width:42px; height:24px; border:none; background:transparent;" />
+          </label>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; gap:8px; margin-top:14px;">
+          <button type="button"
+                  id="settings-reset"
+                  class="btn"
+                  style="flex:1; font-size:12px;">
+            Zurücksetzen
+          </button>
+          <button type="button"
+                  id="settings-apply"
+                  class="btn primary"
+                  style="flex:1; font-size:12px;">
+            Anwenden
+          </button>
+        </div>
+
+        <div style="margin-top:8px; font-size:11px; color:var(--ink-muted);">
+          Auswahl wird lokal im Browser gespeichert.
+        </div>
+      </div>
+
+      <!-- Ansicht 3: Account (Platzhalter) -->
+      <div id="settings-view-account" style="display:none;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:600; font-size:13px;">Account</div>
+          <button type="button"
+                  class="btn ghost"
+                  id="settings-back-from-account"
+                  style="padding:2px 6px; font-size:11px;">
+            ← Zurück
+          </button>
+        </div>
+        <div style="font-size:13px; color:var(--ink-muted);">
+          Hier können später Account-Einstellungen ergänzt werden
+          (z.B. Name, E-Mail, Sprache, Sicherheit).
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Theme Toggle -->
   <script>
@@ -100,6 +242,162 @@
         setTheme(next);
       });
       setTheme(document.documentElement.dataset.theme || 'light');
+    })();
+  </script>
+
+  <!-- Settings-Logik (Panel + Design-Farben) -->
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const STORAGE_KEY = "dm_custom_theme_v1";
+
+      const panel = document.getElementById("settings-panel");
+      const toggleBtn = document.getElementById("settings-toggle");
+      const closeBtn = document.getElementById("settings-close");
+
+      const viewMenu = document.getElementById("settings-view-menu");
+      const viewDesign = document.getElementById("settings-view-design");
+      const viewAccount = document.getElementById("settings-view-account");
+
+      const openDesignBtn = panel ? panel.querySelector("[data-settings-open='design']") : null;
+      const openAccountBtn = panel ? panel.querySelector("[data-settings-open='account']") : null;
+      const backDesignBtn = document.getElementById("settings-back-from-design");
+      const backAccountBtn = document.getElementById("settings-back-from-account");
+
+      const inputs = {
+        bg: document.getElementById("color-bg"),
+        card: document.getElementById("color-card"),
+        ink: document.getElementById("color-ink"),
+        primary: document.getElementById("color-primary"),
+        accent: document.getElementById("color-accent"),
+      };
+
+      const varMap = {
+        bg: "--bg",
+        card: "--card",
+        ink: "--ink",
+        primary: "--primary",
+        accent: "--accent",
+      };
+
+      function showView(name) {
+        if (!panel) return;
+        if (name === "menu") {
+          viewMenu.style.display = "block";
+          viewDesign.style.display = "none";
+          viewAccount.style.display = "none";
+        } else if (name === "design") {
+          viewMenu.style.display = "none";
+          viewDesign.style.display = "block";
+          viewAccount.style.display = "none";
+        } else if (name === "account") {
+          viewMenu.style.display = "none";
+          viewDesign.style.display = "none";
+          viewAccount.style.display = "block";
+        }
+      }
+
+      if (toggleBtn && panel) {
+        toggleBtn.addEventListener("click", () => {
+          const isHidden = panel.style.display === "none" || !panel.style.display;
+          if (isHidden) {
+            showView("menu");
+            panel.style.display = "block";
+          } else {
+            panel.style.display = "none";
+          }
+        });
+      }
+
+      if (closeBtn && panel) {
+        closeBtn.addEventListener("click", () => {
+          panel.style.display = "none";
+        });
+      }
+
+      if (openDesignBtn) {
+        openDesignBtn.addEventListener("click", () => showView("design"));
+      }
+      if (openAccountBtn) {
+        openAccountBtn.addEventListener("click", () => showView("account"));
+      }
+      if (backDesignBtn) {
+        backDesignBtn.addEventListener("click", () => showView("menu"));
+      }
+      if (backAccountBtn) {
+        backAccountBtn.addEventListener("click", () => showView("menu"));
+      }
+
+      function loadThemeFromStorage() {
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          if (!raw) return;
+          const data = JSON.parse(raw);
+
+          Object.keys(varMap).forEach((key) => {
+            if (data[key]) {
+              root.style.setProperty(varMap[key], data[key]);
+              if (inputs[key]) {
+                inputs[key].value = data[key];
+              }
+            }
+          });
+        } catch (e) {
+          console.warn("Cannot load custom theme", e);
+        }
+      }
+
+      function collectFromInputs() {
+        const out = {};
+        Object.keys(inputs).forEach((key) => {
+          const el = inputs[key];
+          if (el && el.value) {
+            out[key] = el.value;
+          }
+        });
+        return out;
+      }
+
+      function applyTheme(data) {
+        Object.keys(varMap).forEach((key) => {
+          if (data[key]) {
+            root.style.setProperty(varMap[key], data[key]);
+          }
+        });
+      }
+
+      function resetTheme() {
+        Object.values(varMap).forEach((cssVar) => {
+          root.style.removeProperty(cssVar);
+        });
+        window.localStorage.removeItem(STORAGE_KEY);
+        Object.keys(inputs).forEach((key) => {
+          if (inputs[key]) inputs[key].value = "";
+        });
+      }
+
+      const applyBtn = document.getElementById("settings-apply");
+      const resetBtn = document.getElementById("settings-reset");
+
+      if (applyBtn) {
+        applyBtn.addEventListener("click", () => {
+          const data = collectFromInputs();
+          applyTheme(data);
+          try {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          } catch (e) {
+            console.warn("Cannot save custom theme", e);
+          }
+        });
+      }
+
+      if (resetBtn) {
+        resetBtn.addEventListener("click", () => {
+          resetTheme();
+        });
+      }
+
+      loadThemeFromStorage();
     })();
   </script>
 

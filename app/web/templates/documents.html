@@ -1,59 +1,174 @@
 {% extends "base.html" %}
 {% block title %}Documents · SPKH{% endblock %}
+
 {% block content %}
 <h2>Document Library</h2>
-<p class="muted" style="margin-top:-4px;margin-bottom:18px;">Manage your uploaded documents</p>
+<p class="muted" style="margin-top:-4px;margin-bottom:18px;">
+  Manage your uploaded documents
+</p>
 
-<div class="card">
-  <div class="card-hdr row">
-    <div>Documents</div>
-    <div class="right">
-      <select class="input" style="min-width:180px">
-        <option>All Categories</option>
-        <option>Contracts</option><option>Finance</option><option>Notes</option>
-      </select>
-    </div>
-  </div>
+<div class="card" style="margin-bottom:20px;">
   <div class="card-body">
-    {% if docs and docs.items %}
+
+    {# --------------------------------------------- #}
+    {# Filterleiste: Suche + Kategorie-Filter        #}
+    {# --------------------------------------------- #}
+    <form method="get" action="/documents" class="row" style="gap:10px; margin-bottom:16px;">
+      <input
+        class="input"
+        type="text"
+        name="q"
+        value="{{ q }}"
+        placeholder="Suche nach Dateiname..."
+        style="flex:2"
+      >
+
+      <select class="input" name="category_id" style="flex:1; min-width:220px;">
+        <option value="">Alle Kategorien</option>
+        {% if categories %}
+          {% for cat in categories %}
+            <option value="{{ cat.id }}"
+              {% if selected_category_id and selected_category_id == (cat.id | string) %}selected{% endif %}>
+              {{ cat.name }}
+            </option>
+          {% endfor %}
+        {% endif %}
+      </select>
+
+      <button class="btn" type="submit" style="flex:0 0 130px;">
+        Filtern
+      </button>
+    </form>
+
+    {# --------------------------------------------- #}
+    {# Kategorie-Management                          #}
+    {# --------------------------------------------- #}
+    <div class="card" style="border:none; box-shadow:none; padding:0; background:transparent;">
+      <div class="card-body" style="padding:0;">
+        <header style="font-weight:600; margin-bottom:10px;">Kategorien verwalten</header>
+
+        {# Neue Kategorie anlegen #}
+        <form method="post" action="/categories/create-web" class="row" style="gap:10px; margin-bottom:10px;">
+          <input
+            class="input"
+            type="text"
+            name="name"
+            placeholder="Neue Kategorie hinzufügen"
+            required
+            style="flex:2; max-width:260px;"
+          >
+          <button class="btn" type="submit" style="flex:0 0 150px;">
+            Kategorie anlegen
+          </button>
+        </form>
+
+        {# Kategorie umbenennen #}
+        <form method="post" action="/categories/rename-web" class="row" style="gap:10px; margin-bottom:10px;">
+          <select class="input" name="category_id" required style="min-width:220px;">
+            <option value="">Kategorie auswählen...</option>
+            {% for cat in categories %}
+              <option value="{{ cat.id }}">{{ cat.name }}</option>
+            {% endfor %}
+          </select>
+
+          <input
+            class="input"
+            type="text"
+            name="new_name"
+            required
+            placeholder="Neuer Kategoriename"
+            style="flex:1;"
+          >
+
+          <button class="btn" type="submit" style="flex:0 0 130px;">
+            Umbenennen
+          </button>
+        </form>
+
+        {# Kategorie löschen #}
+        <form method="post" action="/categories/delete-web" class="row" style="gap:10px;">
+          <select class="input" name="category_id" required style="min-width:220px;">
+            <option value="">Kategorie auswählen...</option>
+            {% for cat in categories %}
+              <option value="{{ cat.id }}">{{ cat.name }}</option>
+            {% endfor %}
+          </select>
+
+          <button class="btn danger" type="submit" style="flex:0 0 150px;">
+            Kategorie löschen
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# ------------------------------------------------- #}
+{# Dokumententabelle                                 #}
+{# ------------------------------------------------- #}
+<div class="card">
+  <div class="card-body">
+    {% if docs and docs|length > 0 %}
       <table role="grid">
         <thead>
           <tr>
-            <th>Title</th><th>Type</th><th>Size</th><th>Date</th><th style="width:150px">Actions</th>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Size</th>
+            <th>Date</th>
+            <th style="width:150px">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {% for d in docs.items %}
-          {% set ext = (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' %}
-          <tr>
-            <td><a href="/documents/{{ d.id }}">{{ d.name }}</a></td>
-            <td>
-              <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">{{ ext }}</span>
-            </td>
-            <td>
-              {% if d.size >= 1024*1024 %}
-                {{ (d.size/1024/1024)|round(2) }} MB
-              {% elif d.size >= 1024 %}
-                {{ (d.size/1024)|round(0) }} KB
-              {% else %}
-                {{ d.size }} B
-              {% endif %}
-            </td>
-            <td class="muted">{{ d.created_at.strftime('%Y-%m-%d') if d.created_at else '-' }}</td>
-            <td class="row" style="gap:6px">
-              <a class="btn" href="/documents/{{ d.id }}">View</a>
-              <a class="btn" href="/documents/{{ d.id }}/download">Download</a>
-              <form method="post" action="/files/{{ d.id }}/delete-web" onsubmit="return confirm('Delete this file?')">
-                <button class="btn">Delete</button>
-              </form>
-            </td>
-          </tr>
+          {% for d in docs %}
+            {% set ext = (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' %}
+            <tr>
+              <td><a href="/documents/{{ d.id }}">{{ d.name }}</a></td>
+              <td>
+                <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">
+                  {{ ext }}
+                </span>
+              </td>
+              <td>
+                {% if d.category %}
+                  {{ d.category }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if d.size >= 1024*1024 %}
+                  {{ (d.size/1024/1024)|round(2) }} MB
+                {% elif d.size >= 1024 %}
+                  {{ (d.size/1024)|round(0) }} KB
+                {% else %}
+                  {{ d.size }} B
+                {% endif %}
+              </td>
+              <td class="muted">
+                {% if d.created_at %}
+                  {{ d.created_at.strftime('%Y-%m-%d') }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td class="row" style="gap:6px">
+                <a class="btn" href="/documents/{{ d.id }}">View</a>
+                <a class="btn" href="/documents/{{ d.id }}/download">Download</a>
+                <form method="post" action="/files/{{ d.id }}/delete-web"
+                      onsubmit="return confirm('Delete this file?')">
+                  <button class="btn" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
           {% endfor %}
         </tbody>
       </table>
     {% else %}
       <div class="empty">
-        <div>No documents yet</div>
+        <div>Keine Dokumente vorhanden.</div>
       </div>
     {% endif %}
   </div>

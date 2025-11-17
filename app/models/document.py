@@ -6,8 +6,13 @@ from datetime import datetime
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
-    String, BigInteger, SmallInteger, Boolean,
-    ForeignKey, DateTime, func
+    String,
+    BigInteger,
+    SmallInteger,
+    Boolean,
+    ForeignKey,
+    DateTime,
+    func,
 )
 
 from app.db.database import Base
@@ -15,6 +20,7 @@ from app.db.database import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.document_version import DocumentVersion
+    from app.models.category import Category  # neu
 
 
 class Document(Base):
@@ -37,6 +43,14 @@ class Document(Base):
     # ------------------------------------------------------------
     folder_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
+    # Kategorie (für Filter etc.)
+    category_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # ------------------------------------------------------------
     # Datei-Infos
     # ------------------------------------------------------------
@@ -49,14 +63,20 @@ class Document(Base):
     # ------------------------------------------------------------
     # Speicher-Provider (lokal/S3/etc.)
     # ------------------------------------------------------------
-    storage_provider_id: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    storage_provider_id: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        default=1,
+    )
 
     # ------------------------------------------------------------
     # Flags & Zeit
     # ------------------------------------------------------------
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 
     # ------------------------------------------------------------
@@ -73,6 +93,11 @@ class Document(Base):
         back_populates="document",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+    category: Mapped[Optional["Category"]] = relationship(
+        "Category",
+        back_populates="documents",
     )
 
     # ------------------------------------------------------------
@@ -109,4 +134,8 @@ class Document(Base):
     # Debug
     # ------------------------------------------------------------
     def __repr__(self) -> str:
-        return f"<Document id={self.id} filename={self.filename!r} size={self.size_bytes}B>"
+        return (
+            f"<Document id={self.id} "
+            f"filename={self.filename!r} "
+            f"size={self.size_bytes}B>"
+        )

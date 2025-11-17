@@ -13,6 +13,8 @@ from app.core.config import settings
 from app.schemas.document import DocumentListOut, DocumentOut
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
+from app.models.document import Document
+
 from app.repositories.document_repo import (
     # Dashboard
     count_documents_for_user,
@@ -20,7 +22,6 @@ from app.repositories.document_repo import (
     recent_uploads_count_week,
     recent_uploads_for_user,
     # Documents
-    list_documents_for_user,
     create_document_with_version,
     soft_delete_document,
     get_document_for_user,          # neue, einheitliche Getter-API
@@ -95,7 +96,7 @@ def dashboard_stats(db: Session, user_id: int) -> dict:
 
 
 # ------------------------------------------------------------
-# Listing / Suche
+# Listing / Suche (mit Kategorie-Filter)
 # ------------------------------------------------------------
 def list_documents(
     db: Session,
@@ -103,17 +104,44 @@ def list_documents(
     q: Optional[str],
     limit: int,
     offset: int,
+    category_id: Optional[int] = None,
 ) -> DocumentListOut:
     """
-    Listet Dokumente des Users (nicht gelöschte) mit optionalem Suchstring (case-insensitive).
+    Listet Dokumente des Users (nicht gelöschte) mit optionalem Suchstring
+    und optionaler Kategorie.
     """
-    rows, total = list_documents_for_user(db, user_id, q, limit, offset)
+    query = (
+        db.query(Document)
+        .filter(
+            Document.owner_user_id == user_id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+    )
+
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(Document.filename.ilike(pattern))
+
+    if category_id is not None:
+        query = query.filter(Document.category_id == category_id)
+
+    total = query.count()
+
+    rows = (
+        query.order_by(Document.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
     items = [
         DocumentOut(
             id=r.id,
-            name=r.filename,                  # Schema erwartet "name"
-            size=r.size_bytes,                # Schema erwartet "size"
-            sha256=(r.checksum_sha256 or ""), # Schema erwartet "sha256"
+            name=r.filename,
+            size=r.size_bytes,
+            sha256=(r.checksum_sha256 or ""),
+            created_at=getattr(r, "created_at", None),
+            category=(r.category.name if getattr(r, "category", None) else None),
         )
         for r in rows
     ]
@@ -121,17 +149,19 @@ def list_documents(
 
 
 # ------------------------------------------------------------
-# Upload
+# Upload (mit optionaler Kategorie)
 # ------------------------------------------------------------
 def upload_document(
     db: Session,
     user_id: int,
     original_name: str,
     file_obj: BinaryIO,
+    category_id: Optional[int] = None,
 ) -> DocumentOut:
     """
     Speichert die Datei unter FILES_DIR/{user_id}/<uuid>.<ext>,
     zeigt im UI aber den bereinigten Originalnamen (filename) an.
+    Optional: Kategorie setzen.
     """
     # 1) User-Verzeichnis sicherstellen
     user_dir = os.path.join(FILES_DIR, str(user_id))
@@ -141,14 +171,14 @@ def upload_document(
     display_name = _sanitize_display_name(original_name)
 
     # 3) Zielpfad (UUID + Original-Ext)
-    disk_name, target_path = _unique_target_path(user_dir, display_name)
+    _, target_path = _unique_target_path(user_dir, display_name)
 
     # 4) Datei speichern + Hash berechnen
     size_bytes = save_stream_to_file(file_obj, target_path)
     with open(target_path, "rb") as fh:
         sha256_hex = sha256_of_stream(fh)
 
-    # 5) DB anlegen (+ erste Version)
+    # 5) DB anlegen (+ erste Version) – OHNE category_id
     doc = create_document_with_version(
         db=db,
         user_id=user_id,
@@ -159,11 +189,21 @@ def upload_document(
         mime_type=None,
     )
 
+    # 6) Kategorie nachträglich setzen (falls vorhanden)
+    if category_id is not None:
+        doc.category_id = category_id
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+
+    # 7) API-Schema zurückgeben (inkl. created_at & Kategorie-Name)
     return DocumentOut(
         id=doc.id,
         name=doc.filename,
         size=doc.size_bytes,
         sha256=(doc.checksum_sha256 or ""),
+        created_at=getattr(doc, "created_at", None),
+        category=(doc.category.name if getattr(doc, "category", None) else None),
     )
 
 
@@ -177,6 +217,7 @@ def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
     doc = get_document_for_user(db, user_id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
     return {
         "id": doc.id,
         "name": doc.filename,
@@ -186,6 +227,11 @@ def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
         "created_at": getattr(doc, "created_at", None),
         "storage_path": doc.storage_path,
         "ext": (doc.filename.rsplit(".", 1)[-1].upper()) if "." in doc.filename else "FILE",
+        # NEU: Kategorie
+        "category_id": getattr(doc, "category_id", None),
+        "category_name": getattr(doc.category, "name", None)
+        if getattr(doc, "category", None)
+        else None,
     }
 
 
@@ -236,7 +282,7 @@ def rename_document_service(db: Session, user_id: int, doc_id: int, new_name: st
     # Zielpfad im User-Ordner (UUID + ext, damit Disk eindeutig bleibt)
     user_dir = os.path.join(FILES_DIR, str(user_id))
     ensure_dir(user_dir)
-    new_disk_name, new_path = _unique_target_path(user_dir, base_new)
+    _, new_path = _unique_target_path(user_dir, base_new)
 
     # Physisch verschieben (atomar auf derselben Partition)
     os.replace(old_path, new_path)
