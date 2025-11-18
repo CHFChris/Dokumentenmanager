@@ -1,10 +1,10 @@
 # app/models/category.py
 from __future__ import annotations
 
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Optional
 
+from sqlalchemy import String, Integer, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, ForeignKey
 
 from app.db.database import Base
 
@@ -27,6 +27,9 @@ class Category(Base):
     )
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Freitext-Keywords (kommasepariert), vom Nutzer gepflegt
+    keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Beziehung: eine Kategorie hat mehrere Dokumente
     documents: Mapped[List["Document"]] = relationship(

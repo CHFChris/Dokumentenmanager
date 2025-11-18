@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     DateTime,
     func,
+    Text,
 )
 
 from app.db.database import Base
@@ -59,6 +60,11 @@ class Document(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     checksum_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+    # ------------------------------------------------------------
+    # OCR / KI
+    # ------------------------------------------------------------
+    ocr_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # ------------------------------------------------------------
     # Speicher-Provider (lokal/S3/etc.)

@@ -3,18 +3,16 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import BinaryIO, Optional
+from datetime import datetime
+from typing import BinaryIO, Optional, List, Dict
 
+import sqlalchemy as sa
 from fastapi import HTTPException
-from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.responses import FileResponse
 
 from app.core.config import settings
-from app.schemas.document import DocumentListOut, DocumentOut
-from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
-
 from app.models.document import Document
-
 from app.repositories.document_repo import (
     # Dashboard
     count_documents_for_user,
@@ -29,11 +27,24 @@ from app.repositories.document_repo import (
     # Legacy-Kompatibilität (nur für Wrapper unten verwendet):
     get_document_owned as _get_document_owned_legacy,
 )
+from app.schemas.document import DocumentListOut, DocumentOut
+from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
+from app.services.ocr_analysis import ocr_and_clean
+from app.services.auto_tagging import guess_category_for_text
 
 # ------------------------------------------------------------
 # Konfiguration
 # ------------------------------------------------------------
 FILES_DIR = getattr(settings, "FILES_DIR", "./data/files")
+
+# sehr einfache Stopwort-Liste (de + en), für Tokenisierung
+SIMPLE_STOPWORDS = {
+    "der", "die", "das", "und", "oder", "ein", "eine", "einer", "einem", "einen",
+    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "für",
+    "an", "am", "als", "zu", "zum", "zur", "bei", "aus", "dem",
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "at", "by",
+    "this", "that", "these", "those", "it", "its", "be", "was", "were", "are",
+}
 
 
 # ------------------------------------------------------------
@@ -72,11 +83,54 @@ def _unique_target_path(base_dir: str, original_name_for_ext: str) -> tuple[str,
     ensure_dir(base_dir)
     disk_name = _uuid_disk_name_with_ext(original_name_for_ext)
     target_path = os.path.join(base_dir, disk_name)
-    # Kollision extrem unwahrscheinlich, aber sicher ist sicher:
     while os.path.exists(target_path):
         disk_name = _uuid_disk_name_with_ext(original_name_for_ext)
         target_path = os.path.join(base_dir, disk_name)
     return disk_name, target_path
+
+
+def _tokenize(text: str) -> List[str]:
+    """
+    Sehr einfache Tokenisierung:
+    - lowercasing
+    - split auf whitespace
+    - Filter: Länge >= 3, kein reines Sonderzeichen, keine Stopwörter
+    """
+    if not text:
+        return []
+    raw_tokens = text.lower().split()
+    tokens: List[str] = []
+    for t in raw_tokens:
+        t = t.strip(".,;:!?()[]{}\"'`<>|/\\+-=_")
+        if not t:
+            continue
+        if len(t) < 3:
+            continue
+        if t in SIMPLE_STOPWORDS:
+            continue
+        tokens.append(t)
+    return tokens
+
+
+def _score_document(title: str, body: str, query_tokens: List[str]) -> int:
+    """
+    Sehr einfache Relevanzbewertung:
+    - Vorkommen im Titel mit Gewicht 3
+    - Vorkommen im OCR-Text mit Gewicht 1
+    """
+    if not query_tokens:
+        return 0
+
+    title_l = (title or "").lower()
+    body_l = (body or "").lower()
+
+    score = 0
+    for tok in query_tokens:
+        if tok in title_l:
+            score += 3
+        if tok in body_l:
+            score += 1
+    return score
 
 
 # ------------------------------------------------------------
@@ -87,16 +141,36 @@ def dashboard_stats(db: Session, user_id: int) -> dict:
     storage = storage_used_for_user(db, user_id)
     recent_week = recent_uploads_count_week(db, user_id)
     recent_items = recent_uploads_for_user(db, user_id, limit=5)
+
+    # OCR-Wortstatistik für alle Dokumente mit OCR-Text
+    most_words = (
+        db.query(Document)
+        .filter(
+            Document.owner_user_id == user_id,
+            Document.ocr_text.isnot(None),
+        )
+        .all()
+    )
+
+    word_stats = [
+        {
+            "id": d.id,
+            "words": len(d.ocr_text.split()) if d.ocr_text else 0,
+        }
+        for d in most_words
+    ]
+
     return {
         "total": total,
         "storage_bytes": storage,
         "recent_week": recent_week,
         "recent_items": recent_items,
+        "word_stats": word_stats,
     }
 
 
 # ------------------------------------------------------------
-# Listing / Suche (mit Kategorie-Filter)
+# Listing / Suche (einfach, LIKE-basiert)
 # ------------------------------------------------------------
 def list_documents(
     db: Session,
@@ -105,10 +179,15 @@ def list_documents(
     limit: int,
     offset: int,
     category_id: Optional[int] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
+    mime_startswith: Optional[str] = None,  # "image/", "application/pdf"
+    only_with_ocr: bool = False,
 ) -> DocumentListOut:
     """
-    Listet Dokumente des Users (nicht gelöschte) mit optionalem Suchstring
-    und optionaler Kategorie.
+    EINFACHE Suche:
+    - WHERE filename ILIKE ... OR ocr_text ILIKE ...
+    - klassische Paginierung in der DB
     """
     query = (
         db.query(Document)
@@ -120,10 +199,27 @@ def list_documents(
 
     if q:
         pattern = f"%{q}%"
-        query = query.filter(Document.filename.ilike(pattern))
+        query = query.filter(
+            sa.or_(
+                Document.filename.ilike(pattern),
+                Document.ocr_text.ilike(pattern),
+            )
+        )
 
     if category_id is not None:
         query = query.filter(Document.category_id == category_id)
+
+    if created_from is not None:
+        query = query.filter(Document.created_at >= created_from)
+
+    if created_to is not None:
+        query = query.filter(Document.created_at <= created_to)
+
+    if mime_startswith:
+        query = query.filter(Document.mime_type.like(f"{mime_startswith}%"))
+
+    if only_with_ocr:
+        query = query.filter(Document.ocr_text.isnot(None))
 
     total = query.count()
 
@@ -149,7 +245,114 @@ def list_documents(
 
 
 # ------------------------------------------------------------
-# Upload (mit optionaler Kategorie)
+# Erweiterte Suche (Tokenisierung + Relevanzranking)
+# ------------------------------------------------------------
+def search_documents_advanced(
+    db: Session,
+    user_id: int,
+    q: str,
+    limit: int,
+    offset: int,
+    category_id: Optional[int] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
+    mime_startswith: Optional[str] = None,
+    only_with_ocr: bool = False,
+) -> DocumentListOut:
+    """
+    ERWEITERTE Suche:
+    - Tokenisierung der Query
+    - Filter wie bei list_documents
+    - Relevanzbewertung in Python
+        * Titel wichtiger als OCR-Text
+        * Sortierung nach Score DESC, dann created_at DESC
+    - Paginierung NACH dem Ranking (Python-slicing)
+    """
+    if not q:
+        return list_documents(
+            db=db,
+            user_id=user_id,
+            q=None,
+            limit=limit,
+            offset=offset,
+            category_id=category_id,
+            created_from=created_from,
+            created_to=created_to,
+            mime_startswith=mime_startswith,
+            only_with_ocr=only_with_ocr,
+        )
+
+    query_tokens = _tokenize(q)
+    if not query_tokens:
+        return DocumentListOut(items=[], total=0)
+
+    base_query = (
+        db.query(Document)
+        .filter(
+            Document.owner_user_id == user_id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+    )
+
+    if category_id is not None:
+        base_query = base_query.filter(Document.category_id == category_id)
+
+    if created_from is not None:
+        base_query = base_query.filter(Document.created_at >= created_from)
+
+    if created_to is not None:
+        base_query = base_query.filter(Document.created_at <= created_to)
+
+    if mime_startswith:
+        base_query = base_query.filter(Document.mime_type.like(f"{mime_startswith}%"))
+
+    if only_with_ocr:
+        base_query = base_query.filter(Document.ocr_text.isnot(None))
+
+    candidates: List[Document] = base_query.all()
+
+    scored: List[Dict] = []
+    for d in candidates:
+        title = d.filename or ""
+        body = d.ocr_text or ""
+        score = _score_document(title, body, query_tokens)
+        if score <= 0:
+            continue
+        scored.append({"doc": d, "score": score})
+
+    scored.sort(
+        key=lambda x: (
+            x["score"],
+            getattr(x["doc"], "created_at", datetime.min),
+            x["doc"].id,
+        ),
+        reverse=True,
+    )
+
+    total = len(scored)
+    sliced = scored[offset : offset + limit]
+
+    items = [
+        DocumentOut(
+            id=entry["doc"].id,
+            name=entry["doc"].filename,
+            size=entry["doc"].size_bytes,
+            sha256=(entry["doc"].checksum_sha256 or ""),
+            created_at=getattr(entry["doc"], "created_at", None),
+            category=(
+                entry["doc"].category.name
+                if getattr(entry["doc"], "category", None)
+                else None
+            ),
+        )
+        for entry in sliced
+    ]
+
+    return DocumentListOut(items=items, total=total)
+
+
+# ------------------------------------------------------------
+# Upload (mit optionaler Kategorie + OCR + Auto-Tagging)
 # ------------------------------------------------------------
 def upload_document(
     db: Session,
@@ -162,6 +365,10 @@ def upload_document(
     Speichert die Datei unter FILES_DIR/{user_id}/<uuid>.<ext>,
     zeigt im UI aber den bereinigten Originalnamen (filename) an.
     Optional: Kategorie setzen.
+    Zusätzlich:
+    - OCR-Text wird in documents.ocr_text gespeichert.
+    - Wenn keine Kategorie gewählt wurde, wird anhand des OCR-Texts versucht,
+      automatisch eine passende Kategorie zuzuweisen.
     """
     # 1) User-Verzeichnis sicherstellen
     user_dir = os.path.join(FILES_DIR, str(user_id))
@@ -178,25 +385,42 @@ def upload_document(
     with open(target_path, "rb") as fh:
         sha256_hex = sha256_of_stream(fh)
 
-    # 5) DB anlegen (+ erste Version) – OHNE category_id
+    # 5) DB anlegen (+ erste Version)
     doc = create_document_with_version(
         db=db,
         user_id=user_id,
-        filename=display_name,     # schöner Anzeigename
-        storage_path=target_path,  # echter Pfad auf Disk
+        filename=display_name,
+        storage_path=target_path,
         size_bytes=size_bytes,
         checksum_sha256=sha256_hex,
         mime_type=None,
     )
 
-    # 6) Kategorie nachträglich setzen (falls vorhanden)
+    # 6) OCR-Text ermitteln (best effort, Fehler brechen Upload nicht ab)
+    extracted_text: Optional[str] = None
+    try:
+        extracted_text = ocr_and_clean(target_path)
+    except Exception:
+        extracted_text = None
+
+    doc.ocr_text = extracted_text
+
+    # 7) Kategorie setzen:
+    #    - Wenn User Kategorie gewählt hat: diese nehmen
+    #    - Sonst versuchen, anhand OCR-Text automatisch eine Kategorie zu finden
     if category_id is not None:
         doc.category_id = category_id
-        db.add(doc)
-        db.commit()
-        db.refresh(doc)
+    else:
+        if doc.ocr_text:
+            auto_cat_id = guess_category_for_text(db, user_id, doc.ocr_text)
+            if auto_cat_id is not None:
+                doc.category_id = auto_cat_id
 
-    # 7) API-Schema zurückgeben (inkl. created_at & Kategorie-Name)
+    # 8) Änderungen speichern
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
     return DocumentOut(
         id=doc.id,
         name=doc.filename,
@@ -211,9 +435,6 @@ def upload_document(
 # Detail / Download
 # ------------------------------------------------------------
 def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
-    """
-    Liefert Detailinformationen (für API/Template).
-    """
     doc = get_document_for_user(db, user_id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -227,7 +448,6 @@ def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
         "created_at": getattr(doc, "created_at", None),
         "storage_path": doc.storage_path,
         "ext": (doc.filename.rsplit(".", 1)[-1].upper()) if "." in doc.filename else "FILE",
-        # NEU: Kategorie
         "category_id": getattr(doc, "category_id", None),
         "category_name": getattr(doc.category, "name", None)
         if getattr(doc, "category", None)
@@ -236,9 +456,6 @@ def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
 
 
 def download_response(db: Session, user_id: int, doc_id: int) -> FileResponse:
-    """
-    Liefert eine FileResponse mit sicherem Content-Type-Fallback.
-    """
     doc = get_document_for_user(db, user_id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -253,50 +470,35 @@ def download_response(db: Session, user_id: int, doc_id: int) -> FileResponse:
 # Rename (Dateisystem + DB)
 # ------------------------------------------------------------
 def rename_document_service(db: Session, user_id: int, doc_id: int, new_name: str) -> None:
-    """
-    Bennennt ein Dokument sicher um:
-    - validiert neuen Namen
-    - behält vorhandene Dateiendung, falls keine angegeben
-    - verschiebt Datei atomar in FILES_DIR/{user_id}/
-    - aktualisiert DB (filename + storage_path) atomar
-    """
-    # validierter Anzeigename (für DB/UI)
     new_display_name = _sanitize_display_name(new_name)
     if not new_display_name:
         raise HTTPException(status_code=400, detail="Invalid file name")
 
-    # Dokument holen + Plausibilitäten
     doc = get_document_for_user(db, user_id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
     old_path = doc.storage_path
     if not old_path or not os.path.exists(old_path):
-        # Inkonsistenz bewusst signalisieren
         raise HTTPException(status_code=409, detail="Stored file missing on disk")
 
-    # Dateiendung beibehalten, wenn neue keinen Punkt hat
     old_ext = os.path.splitext(doc.filename)[1]
     base_new = new_display_name if os.path.splitext(new_display_name)[1] else f"{new_display_name}{old_ext}"
 
-    # Zielpfad im User-Ordner (UUID + ext, damit Disk eindeutig bleibt)
     user_dir = os.path.join(FILES_DIR, str(user_id))
     ensure_dir(user_dir)
     _, new_path = _unique_target_path(user_dir, base_new)
 
-    # Physisch verschieben (atomar auf derselben Partition)
     os.replace(old_path, new_path)
 
-    # DB aktualisieren – filename (Anzeige) und storage_path (Disk)
     ok = update_document_name_and_path(
         db=db,
         user_id=user_id,
         doc_id=doc_id,
-        new_filename=new_display_name,  # Anzeige-/UI-Name!
+        new_filename=new_display_name,
         new_storage_path=new_path,
     )
     if not ok:
-        # Best effort Rollback der Datei
         try:
             os.replace(new_path, old_path)
         except Exception:
@@ -308,9 +510,6 @@ def rename_document_service(db: Session, user_id: int, doc_id: int, new_name: st
 # Delete (Soft)
 # ------------------------------------------------------------
 def remove_document(db: Session, user_id: int, doc_id: int) -> bool:
-    """
-    Soft-Delete in der DB (Datei bleibt physisch erhalten).
-    """
     return soft_delete_document(db, doc_id, user_id)
 
 
@@ -318,10 +517,6 @@ def remove_document(db: Session, user_id: int, doc_id: int) -> bool:
 # Legacy-Wrapper (rückwärtskompatibel)
 # ------------------------------------------------------------
 def get_owned_or_404(db: Session, user_id: int, doc_id: int):
-    """
-    Legacy-Verhalten: wirft ValueError, wenn nicht gefunden.
-    Router mappt das auf 404/403.
-    """
     doc = get_document_for_user(db, user_id, doc_id)
     if not doc:
         raise ValueError("NOT_FOUND_OR_FORBIDDEN")
@@ -329,8 +524,5 @@ def get_owned_or_404(db: Session, user_id: int, doc_id: int):
 
 
 def delete_owned_document(db: Session, user_id: int, doc_id: int) -> bool:
-    """
-    Legacy-Verhalten: zuerst Ownership/Existenz prüfen, dann soft-deleten.
-    """
     _ = get_owned_or_404(db, user_id, doc_id)
     return soft_delete_document(db, doc_id, user_id)
