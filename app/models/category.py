@@ -1,9 +1,9 @@
 # app/models/category.py
 from __future__ import annotations
 
-from typing import List, TYPE_CHECKING, Optional
+from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import String, Integer, ForeignKey, Text
+from sqlalchemy import BigInteger, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -16,9 +16,16 @@ if TYPE_CHECKING:
 class Category(Base):
     __tablename__ = "categories"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    # ------------------------------------------------------------
+    # Core
+    # ------------------------------------------------------------
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+    )
 
-    # Nutzer besitzt Kategorien
+    # Besitzer der Kategorie (User-spezifische Kategorien)
     user_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -26,21 +33,57 @@ class Category(Base):
         index=True,
     )
 
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Anzeigename der Kategorie
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
 
-    # Freitext-Keywords (kommasepariert), vom Nutzer gepflegt
-    keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Freies Textfeld für Schlagwörter / Keywords (durch KI gepflegt)
+    keywords: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
 
-    # Beziehung: eine Kategorie hat mehrere Dokumente
+    # ------------------------------------------------------------
+    # Beziehungen
+    # ------------------------------------------------------------
+    # User -> Kategorien (wird per backref am User als "categories" verfügbar)
+    user: Mapped["User"] = relationship(
+        "User",
+        backref="categories",
+    )
+
+    # Kategorie -> Dokumente (Rückseite von Document.category)
     documents: Mapped[List["Document"]] = relationship(
         "Document",
         back_populates="category",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
     )
 
-    # optional, falls User -> categories benötigt wird
-    # user: Mapped["User"] = relationship("User", back_populates="categories")
+    # ------------------------------------------------------------
+    # Convenience
+    # ------------------------------------------------------------
+    @property
+    def keyword_list(self) -> list[str]:
+        """
+        Hilfsproperty: Keywords als Liste.
+        Trennt an Kommas und Zeilenumbrüchen, entfernt Leerzeichen.
+        """
+        if not self.keywords:
+            return []
+        raw = self.keywords.replace("\r", "\n")
+        parts = [p.strip() for p in raw.replace(",", "\n").split("\n")]
+        return [p for p in parts if p]
 
+    @keyword_list.setter
+    def keyword_list(self, values: list[str]) -> None:
+        """
+        Setzt keywords aus einer Liste; speichert sie kommasepariert.
+        """
+        self.keywords = ", ".join(v.strip() for v in values if v.strip())
+
+    # ------------------------------------------------------------
+    # Debug
+    # ------------------------------------------------------------
     def __repr__(self) -> str:
-        return f"<Category id={self.id} name={self.name!r}>"
+        return f"<Category id={self.id} user_id={self.user_id} name={self.name!r}>"

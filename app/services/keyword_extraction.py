@@ -1,55 +1,55 @@
 # app/services/keyword_extraction.py
 from __future__ import annotations
 
-import re
 from collections import Counter
-from typing import List
+from typing import List, Iterable
 
-# sehr einfache Stopwort-Liste (deutsch + englisch, beliebig erweiterbar)
+# sehr einfache Stopwortliste, gern erweitern
 STOPWORDS = {
-    "und", "oder", "aber", "dass", "die", "der", "das", "ein", "eine", "ist",
-    "im", "in", "am", "an", "auf", "mit", "für", "zu", "von", "den", "dem",
-    "nicht", "sie", "er", "wir", "ihr", "als", "auch", "bei", "aus",
-
-    "the", "and", "or", "but", "that", "this", "a", "an", "of", "to", "in",
-    "on", "at", "for", "by", "from", "it", "is", "are", "was", "were",
+    "der", "die", "das", "und", "oder", "ein", "eine", "einer", "einem", "einen",
+    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "für",
+    "an", "am", "als", "zu", "zum", "zur", "bei", "aus", "dem",
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "at", "by",
+    "this", "that", "these", "those", "it", "its", "be", "was", "were", "are",
 }
 
 
-def normalize_text(text: str) -> List[str]:
+def _tokenize(text: str) -> List[str]:
     """
-    Macht alles klein, entfernt Sonderzeichen, splittet in Wörter.
-    Gibt nur sinnvolle Wörter zurück (Laenge >= 4, nicht nur Ziffern).
+    Sehr einfache Tokenisierung:
+    - lowercasing
+    - split auf whitespace
+    - rudimentäre Bereinigung von Satzzeichen
+    - Filter: Länge >= 3, kein Stopwort
     """
-    text = text.lower()
-    # nur Buchstaben, Zahlen und Leerzeichen erlauben
-    text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
-    tokens = text.split()
+    if not text:
+        return []
 
-    cleaned = []
-    for tok in tokens:
-        if len(tok) < 4:
+    raw_tokens = text.lower().split()
+    tokens: List[str] = []
+    for t in raw_tokens:
+        t = t.strip(".,;:!?()[]{}\"'`<>|/\\+-=_")
+        if not t:
             continue
-        if tok in STOPWORDS:
+        if len(t) < 3:
             continue
-        if tok.isdigit():
+        if t in STOPWORDS:
             continue
-        cleaned.append(tok)
+        tokens.append(t)
+    return tokens
 
-    return cleaned
 
-
-def extract_keywords_from_text(text: str, top_n: int = 15) -> List[str]:
+def extract_keywords_from_text(text: str, top_n: int = 20) -> List[str]:
     """
-    Sehr einfacher Keyword-Extractor:
-    - normalisiert Text
-    - zählt Worthäufigkeiten
-    - gibt die häufigsten Wörter zurück
+    Nimmt den gesamten OCR-Text und liefert die häufigsten Wörter zurück.
+    KEINE Mindestanzahl an Vorkommen -> auch bei wenigen Dokumenten kommen Vorschläge.
     """
-    tokens = normalize_text(text)
+    tokens = _tokenize(text)
     if not tokens:
         return []
 
     counter = Counter(tokens)
+    # einfach die häufigsten N Wörter
     most_common = counter.most_common(top_n)
-    return [word for word, _count in most_common]
+    keywords = [word for word, count in most_common]
+    return keywords

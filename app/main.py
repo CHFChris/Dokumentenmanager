@@ -19,6 +19,7 @@ from app.api.routes import (
     files as files_routes,
     users as users_routes,
     upload as upload_routes,
+    categories as categories_routes,  # NEU: Kategorien- und Keyword-Suggestions-API
 )
 
 # --- Web-Router (Jinja-Templates) ---
@@ -65,7 +66,8 @@ def on_startup() -> None:
 app.include_router(auth_routes.router, prefix="/auth")
 app.include_router(files_routes.router, prefix="/files")
 app.include_router(users_routes.router, prefix="/users")
-app.include_router(upload_routes.router)  # /upload
+app.include_router(upload_routes.router)              # /upload
+app.include_router(categories_routes.router)          # /categories/... (Keyword-Suggestions etc.)
 
 # Web (HTML/Jinja)
 app.include_router(routes_web.router)
@@ -112,6 +114,7 @@ async def redirect_unauthenticated_html(request: Request, call_next):
 # =============================================================================
 security = HTTPBearer()
 
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -135,5 +138,6 @@ def custom_openapi():
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
 
 app.openapi = custom_openapi

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Kategorie: {{ category.name }}</h1>
+
+<h2>Aktuelle Keywords</h2>
+<p>
+  {% if category.keywords %}
+    {{ category.keywords }}
+  {% else %}
+    <em>Keine Keywords hinterlegt</em>
+  {% endif %}
+</p>
+
+<h2>Vorgeschlagene Keywords</h2>
+{% set suggestions = keyword_suggestions.suggested_keywords %}
+{% if suggestions %}
+  <ul>
+    {% for kw in suggestions %}
+      <li>{{ kw }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p><em>Keine Vorschläge vorhanden (noch zu wenig OCR-Text).</em></p>
+{% endif %}
+
+<h2>Keywords bearbeiten / Vorschläge übernehmen</h2>
+<form method="post" action="/categories/{{ category.id }}/update-keywords-web">
+  <label for="keywords_text">Keywords (kommagetrennt):</label><br>
+  <textarea id="keywords_text" name="keywords_text" rows="3" cols="60">
+{% if category.keywords %}
+{{ category.keywords }}
+{% else %}
+{% if suggestions %}
+{{ suggestions | join(", ") }}
+{% endif %}
+{% endif %}
+  </textarea>
+  <br>
+  <button type="submit">Speichern</button>
+</form>
+{% endblock %}

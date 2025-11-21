@@ -29,7 +29,11 @@ from app.repositories.document_repo import (
 )
 from app.schemas.document import DocumentListOut, DocumentOut
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
-from app.services.ocr_analysis import ocr_and_clean
+from app.services.ocr_service import (
+    extract_text_from_pdf,
+    extract_text_from_image,
+    extract_text_from_docx,
+)
 from app.services.auto_tagging import guess_category_for_text
 
 # ------------------------------------------------------------
@@ -366,7 +370,7 @@ def upload_document(
     zeigt im UI aber den bereinigten Originalnamen (filename) an.
     Optional: Kategorie setzen.
     Zusätzlich:
-    - OCR-Text wird in documents.ocr_text gespeichert.
+    - OCR-/Text-Content wird in documents.ocr_text gespeichert.
     - Wenn keine Kategorie gewählt wurde, wird anhand des OCR-Texts versucht,
       automatisch eine passende Kategorie zuzuweisen.
     """
@@ -396,14 +400,21 @@ def upload_document(
         mime_type=None,
     )
 
-    # 6) OCR-Text ermitteln (best effort, Fehler brechen Upload nicht ab)
-    extracted_text: Optional[str] = None
+    # 6) OCR- / Text-Extraction (best effort, Fehler brechen Upload nicht ab)
+    ocr_text: Optional[str] = None
     try:
-        extracted_text = ocr_and_clean(target_path)
+        lower_name = display_name.lower()
+        if lower_name.endswith(".pdf"):
+            ocr_text = extract_text_from_pdf(target_path)
+        elif lower_name.endswith((".jpg", ".jpeg", ".png")):
+            ocr_text = extract_text_from_image(target_path)
+        elif lower_name.endswith((".docx", ".doc")):
+            # Kein OCR, aber strukturierter Text-Read
+            ocr_text = extract_text_from_docx(target_path)
     except Exception:
-        extracted_text = None
+        ocr_text = None
 
-    doc.ocr_text = extracted_text
+    doc.ocr_text = ocr_text
 
     # 7) Kategorie setzen:
     #    - Wenn User Kategorie gewählt hat: diese nehmen

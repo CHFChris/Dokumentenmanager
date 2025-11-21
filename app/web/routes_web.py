@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
+from app.core.config import settings
+from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
 # Category-Repo (für Filter / Auswahl)
 from app.repositories.category_repo import (
@@ -50,9 +52,12 @@ from app.repositories.document_repo import (
     get_version_owned,
 )
 
-# Utils & Settings (für Version-Upload/Restore Dateihandling)
-from app.core.config import settings
-from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
+# Modelle
+from app.models.category import Category
+
+# Auto-Tagging für Kategorie-Keyword-Vorschläge
+from app.services.auto_tagging import suggest_keywords_for_category
+
 
 # -------------------------------------------------------------
 # Router & Templates
@@ -247,6 +252,86 @@ def rename_category_web(
 
 
 # -------------------------------------------------------------
+# Kategorie-Detailseite mit Keyword-Empfehlungen
+# -------------------------------------------------------------
+@router.get("/categories/{category_id}", response_class=HTMLResponse)
+def category_detail(
+    category_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user_web),
+):
+    category = (
+        db.query(Category)
+        .filter(
+            Category.id == category_id,
+            Category.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not category:
+        return templates.TemplateResponse(
+            "404.html",
+            {"request": request},
+            status_code=404,
+        )
+
+    suggestions = suggest_keywords_for_category(
+        db=db,
+        user_id=current_user.id,
+        category_id=category_id,
+        top_n=15,
+    )
+
+    return templates.TemplateResponse(
+        "category_detail.html",
+        {
+            "request": request,
+            "user": current_user,
+            "category": category,
+            "keyword_suggestions": suggestions,
+            "active": "categories",
+        },
+    )
+
+
+@router.post("/categories/{category_id}/update-keywords-web", include_in_schema=False)
+def category_update_keywords_web(
+    category_id: int,
+    request: Request,
+    keywords_text: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user_web),
+):
+    # keywords_text ist z. B. "rechnung, kunde, betrag, steuernummer"
+    cleaned = [k.strip() for k in keywords_text.split(",") if k.strip()]
+
+    category = (
+        db.query(Category)
+        .filter(
+            Category.id == category_id,
+            Category.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not category:
+        return templates.TemplateResponse(
+            "404.html",
+            {"request": request},
+            status_code=404,
+        )
+
+    category.keywords = ", ".join(cleaned) if cleaned else None
+    db.add(category)
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/categories/{category_id}",
+        status_code=303,
+    )
+
+
+# -------------------------------------------------------------
 # DOCUMENTS – Liste & Suche (mit Kategorie-Filter)
 # -------------------------------------------------------------
 @router.get("/documents", response_class=HTMLResponse)
@@ -271,9 +356,7 @@ def documents_page(
         category_id=cat_id,
     )
 
-    # DocumentListOut -> Liste für Template
     docs = result.items
-
     categories = list_categories_for_user(db, user.id)
 
     return templates.TemplateResponse(
@@ -484,6 +567,7 @@ def search_page(
             "active": "search",
         },
     )
+
 
 @router.get("/security-info", response_class=HTMLResponse)
 def security_info_page(

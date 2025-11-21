@@ -1,121 +1,147 @@
 # app/services/auto_tagging.py
 from __future__ import annotations
 
-from app.models.document import Document
-from app.services.keyword_extraction import extract_keywords_from_text
-
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
+from app.models.document import Document
+from app.schemas.category import CategoryKeywordSuggestionOut
+from app.services.keyword_extraction import extract_keywords_from_text
 
 
-def build_category_keywords(db: Session, user_id: int) -> Dict[int, List[str]]:
+# Sehr einfache Stopwortliste – kann mit deiner aus document_service abgestimmt werden
+STOPWORDS = {
+    "der", "die", "das", "und", "oder", "ein", "eine", "einer", "einem", "einen",
+    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "für",
+    "an", "am", "als", "zu", "zum", "zur", "bei", "aus", "dem",
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "at", "by",
+    "this", "that", "these", "those", "it", "its", "be", "was", "were", "are",
+}
+
+
+def _tokenize_simple(text: str) -> List[str]:
     """
-    Baut eine dynamische Map:
-        { category_id: [keyword1, keyword2, ...] }
-
-    Aktuell: nur der Kategoriename selbst als Keyword.
-    Später kannst du z.B. noch ein Feld "keywords" in Category ergänzen.
+    Sehr einfache Tokenizer-Funktion:
+    - lowercasing
+    - Split auf Whitespace
+    - Entfernt Satzzeichen
+    - Filtert Stopwörter und sehr kurze Tokens
     """
-    categories = (
-        db.query(Category)
-        .filter(Category.user_id == user_id)
-        .all()
-    )
-
-    mapping: Dict[int, List[str]] = {}
-
-    for cat in categories:
-        if not cat.name:
+    if not text:
+        return []
+    tokens: List[str] = []
+    for raw in text.lower().split():
+        t = raw.strip(".,;:!?()[]{}\"'`<>|/\\+-=_")
+        if not t:
             continue
-        name_kw = cat.name.strip().lower()
-        if not name_kw:
+        if len(t) < 3:
             continue
-
-        # Basis: der Kategoriename selbst ist ein Keyword
-        keywords = [name_kw]
-
-        # Hier könntest du später zusätzliche Keywords aus einem Feld übernehmen
-        # z.B. wenn Category ein Feld "extra_keywords" bekäme.
-
-        mapping[cat.id] = keywords
-
-    return mapping
+        if t in STOPWORDS:
+            continue
+        tokens.append(t)
+    return tokens
 
 
+def _parse_existing_keywords(raw: Optional[str]) -> List[str]:
+    """
+    Zerlegt das gespeicherte Komma-Feld in eine saubere, kleingeschriebene Liste.
+    """
+    if not raw:
+        return []
+    return [k.strip().lower() for k in raw.split(",") if k.strip()]
+
+
+def _score_category(category_keywords: List[str], doc_tokens: List[str]) -> int:
+    """
+    Einfacher Score:
+    - Anzahl der Überschneidungen Kategorie-Keywords vs. Dokument-Tokens.
+    """
+    if not category_keywords or not doc_tokens:
+        return 0
+
+    kw_set = {k.lower() for k in category_keywords if k}
+    token_set = set(doc_tokens)
+    return len(kw_set & token_set)
+
+
+# ---------------------------------------------------------------------------
+# 1) Kategorie per Keywords automatisch raten (für Upload ohne Kategorie)
+# ---------------------------------------------------------------------------
 def guess_category_for_text(
     db: Session,
     user_id: int,
     text: str,
 ) -> Optional[int]:
     """
-    Versucht anhand des OCR-Textes eine passende Kategorie zu finden.
-    Very simple: prüft, ob der Kategoriename irgendwo im Text vorkommt.
-    Gibt die ID der Kategorie mit den meisten Treffern zurück.
+    Versucht, anhand des OCR-/Textinhalts eine passende Kategorie zu finden.
+
+    Logik:
+    - Text wird tokenisiert (Stopwörter entfernt).
+    - Für jede Kategorie des Users:
+        * Keywords aus categories.keywords holen
+        * Score = Schnittmenge(Keyword-Set, Text-Tokens)
+    - Es wird die Kategorie mit dem höchsten Score gewählt,
+      aber nur, wenn eine Mindest-Schwelle erreicht ist.
     """
-    if not text:
+
+    # Mindest-Schwelle: mindestens 2 Keyword-Treffer,
+    # damit nicht "irgendwas" zufällig zugeordnet wird.
+    MIN_SCORE = 1
+
+    doc_tokens = _tokenize_simple(text)
+    if not doc_tokens:
         return None
 
-    text_l = text.lower()
-    mapping = build_category_keywords(db, user_id)
+    categories = (
+        db.query(Category)
+        .filter(Category.user_id == user_id)
+        .all()
+    )
 
     best_cat_id: Optional[int] = None
-    best_hits = 0
+    best_score = 0
 
-    for cat_id, keywords in mapping.items():
-        hits = 0
-        for kw in keywords:
-            if kw in text_l:
-                hits += 1
+    for cat in categories:
+        if not cat.keywords:
+            continue
 
-        if hits > best_hits:
-            best_hits = hits
-            best_cat_id = cat_id
+        cat_keywords = _parse_existing_keywords(cat.keywords)
+        if not cat_keywords:
+            continue
 
-    if best_hits == 0:
-        return None
+        score = _score_category(cat_keywords, doc_tokens)
 
-    return best_cat_id
+        if score > best_score:
+            best_score = score
+            best_cat_id = cat.id
 
-def _parse_existing_keywords(raw: str | None) -> List[str]:
-    """
-    Hilfsfunktion: Kommagetrennte Keywords in Liste umwandeln.
-    """
-    if not raw:
-        return []
-    parts = [p.strip().lower() for p in raw.split(",")]
-    return [p for p in parts if p]
+    if best_score >= MIN_SCORE:
+        return best_cat_id
+
+    return None
 
 
-def _serialize_keywords(keywords: List[str]) -> str:
-    """
-    Liste von Keywords in Komma-String wandeln.
-    (Wird genutzt, wenn du später Keywords speicherst.)
-    """
-    return ", ".join(sorted(set(k.strip().lower() for k in keywords if k.strip())))
-
-
+# ---------------------------------------------------------------------------
+# 2) Keyword-Vorschläge für eine Kategorie (Frontend /categories/{id})
+# ---------------------------------------------------------------------------
 def suggest_keywords_for_category(
     db: Session,
     user_id: int,
     category_id: int,
     top_n: int = 15,
-) -> dict:
+) -> CategoryKeywordSuggestionOut:
     """
-    Liefert Vorschläge für neue Keywords einer Kategorie auf Basis der OCR-Texte.
+    Nimmt alle Dokumente dieser Kategorie (mit OCR-Text),
+    baut einen großen Text und extrahiert daraus die häufigsten Wörter.
 
-    Rückgabe-Struktur:
-    {
-        "category_id": ...,
-        "category_name": "...",
-        "existing_keywords": [...],
-        "suggested_keywords": [...],  # nur die, die noch nicht existieren
-    }
+    - vorhandene Keywords werden entfernt
+    - Duplikate werden entfernt
+    - Reihenfolge nach Häufigkeit (über extract_keywords_from_text)
     """
-    # Kategorie holen (inkl. Besitzerprüfung)
-    cat = (
+    # 1) Kategorie holen und Ownership prüfen
+    category = (
         db.query(Category)
         .filter(
             Category.id == category_id,
@@ -123,44 +149,64 @@ def suggest_keywords_for_category(
         )
         .first()
     )
-    if not cat:
-        raise ValueError("Category not found or not owned by user")
+    if not category:
+        raise ValueError("CATEGORY_NOT_FOUND")
 
-    existing = _parse_existing_keywords(cat.keywords)
+    existing_keywords = _parse_existing_keywords(category.keywords)
 
-    # Alle Dokumente dieser Kategorie mit OCR-Text holen
+    # 2) Alle Dokumente der Kategorie mit OCR-Text laden
     docs = (
         db.query(Document)
         .filter(
             Document.owner_user_id == user_id,
             Document.category_id == category_id,
-            Document.is_deleted == False,  # noqa: E712
+            Document.is_deleted == False,          # noqa: E712
             Document.ocr_text.isnot(None),
         )
         .all()
     )
 
-    if not docs:
-        return {
-            "category_id": cat.id,
-            "category_name": cat.name,
-            "existing_keywords": existing,
-            "suggested_keywords": [],
-        }
+    combined_text_parts: List[str] = [
+        d.ocr_text for d in docs if d.ocr_text
+    ]
+    combined_text = "\n".join(combined_text_parts)
 
-    # Alle OCR-Texte zusammenfassen
-    combined_text = " ".join(d.ocr_text for d in docs if d.ocr_text)
+    if not combined_text.strip():
+        # Kein OCR-Text vorhanden -> leere Vorschläge
+        return CategoryKeywordSuggestionOut(
+            category_id=category.id,
+            category_name=category.name,
+            existing_keywords=existing_keywords,
+            suggested_keywords=[],
+        )
 
-    # Keywords aus OCR-Text extrahieren
-    raw_suggestions = extract_keywords_from_text(combined_text, top_n=top_n)
+    # 3) Keywords aus dem kombinierten Text extrahieren
+    candidates = extract_keywords_from_text(
+        combined_text,
+        top_n=top_n * 3,   # etwas „zu viele“ holen, wir filtern gleich noch
+    )
 
-    # Nur Vorschläge, die noch nicht in existing sind
-    existing_set = set(existing)
-    suggestions = [w for w in raw_suggestions if w not in existing_set]
+    existing_set = set(existing_keywords)
+    seen: set[str] = set()
+    suggestions: List[str] = []
 
-    return {
-        "category_id": cat.id,
-        "category_name": cat.name,
-        "existing_keywords": existing,
-        "suggested_keywords": suggestions,
-    }
+    for kw in candidates:
+        k = kw.strip().lower()
+        if not k:
+            continue
+        if k in existing_set:
+            continue
+        if k in seen:
+            continue
+
+        seen.add(k)
+        suggestions.append(k)
+        if len(suggestions) >= top_n:
+            break
+
+    return CategoryKeywordSuggestionOut(
+        category_id=category.id,
+        category_name=category.name,
+        existing_keywords=existing_keywords,
+        suggested_keywords=suggestions,
+    )
