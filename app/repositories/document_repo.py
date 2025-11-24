@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.document import Document
 from app.models.document_version import DocumentVersion
+from app.utils.crypto_utils import encrypt_text  # für verschlüsselte OCR-Texte
 
 
 # -------------------------------------------------------------------
@@ -148,7 +149,7 @@ def create_document_with_version(
     size_bytes: int,
     checksum_sha256: Optional[str],
     mime_type: Optional[str],
-    note: Optional[str] = None,  # <- Vereinheitlichung: note ist jetzt möglich
+    note: Optional[str] = None,
 ) -> Document:
     """
     Legt ein Document an und erzeugt Version 1 (inkl. optionaler Notiz).
@@ -413,3 +414,34 @@ def get_version_owned(db: Session, doc_id: int, version_id: int, owner_id: int) 
         .limit(1)
     )
     return db.execute(ver_stmt).scalar_one_or_none()
+
+
+# -------------------------------------------------------------------
+# OCR-Schreiben (verschlüsselt)
+# -------------------------------------------------------------------
+def set_ocr_text_for_document(
+    db: Session,
+    user_id: int,
+    doc_id: int,
+    ocr_plaintext: Optional[str],
+) -> bool:
+    """
+    Setzt den OCR-Text eines Dokuments verschlüsselt.
+    - Nur für den Owner
+    - Nur für nicht-gelöschte Dokumente
+    - Nutzt encrypt_text(), damit in der DB niemals Klartext-OCR liegt.
+    """
+    text = (ocr_plaintext or "").strip()
+    encrypted = encrypt_text(text) if text else None
+
+    res = db.execute(
+        update(Document)
+        .where(
+            Document.id == doc_id,
+            Document.owner_user_id == user_id,
+            Document.is_deleted.is_(False),
+        )
+        .values(ocr_text=encrypted)
+    )
+    db.commit()
+    return (res.rowcount or 0) > 0

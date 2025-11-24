@@ -1,11 +1,21 @@
 # app/repositories/category_repo.py
-from typing import List, Optional
+from __future__ import annotations
+
+from typing import Optional, List
+
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
 
 
-def list_categories_for_user(db: Session, user_id: int) -> List[Category]:
+def list_categories_for_user(
+    db: Session,
+    user_id: int,
+) -> List[Category]:
+    """
+    Liefert alle Kategorien eines Users.
+    Andere User sehen diese Kategorien nicht.
+    """
     return (
         db.query(Category)
         .filter(Category.user_id == user_id)
@@ -14,50 +24,61 @@ def list_categories_for_user(db: Session, user_id: int) -> List[Category]:
     )
 
 
-def get_category_by_name(db: Session, user_id: int, name: str) -> Optional[Category]:
+def get_category_for_user(
+    db: Session,
+    user_id: int,
+    category_id: int,
+) -> Optional[Category]:
+    """
+    Holt genau eine Kategorie, aber nur,
+    wenn sie dem User gehört.
+    """
     return (
         db.query(Category)
-        .filter(Category.user_id == user_id, Category.name == name)
-        .first()
+        .filter(
+            Category.id == category_id,
+            Category.user_id == user_id,
+        )
+        .one_or_none()
     )
 
 
-def create_category(db: Session, user_id: int, name: str) -> Category:
-    existing = get_category_by_name(db, user_id, name)
-    if existing:
-        return existing
+def create_category_for_user(
+    db: Session,
+    user_id: int,
+    name: str,
+    keywords: Optional[str] = None,
+) -> Category:
+    """
+    Legt eine neue Kategorie für den User an.
+    """
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Name darf nicht leer sein")
 
-    cat = Category(user_id=user_id, name=name.strip())
+    cat = Category(
+        user_id=user_id,
+        name=name,
+        keywords=keywords or None,
+    )
     db.add(cat)
     db.commit()
     db.refresh(cat)
     return cat
 
 
-def rename_category(db: Session, user_id: int, category_id: int, new_name: str):
-    cat = (
-        db.query(Category)
-        .filter(
-            Category.id == category_id,
-            Category.user_id == user_id
-        )
-        .first()
-    )
-    if cat:
-        cat.name = new_name.strip()
-        db.commit()
-        db.refresh(cat)
+def delete_category_for_user(
+    db: Session,
+    user_id: int,
+    category_id: int,
+) -> bool:
+    """
+    Löscht eine Kategorie nur, wenn sie dem User gehört.
+    """
+    cat = get_category_for_user(db, user_id, category_id)
+    if not cat:
+        return False
 
-
-def delete_category(db: Session, user_id: int, category_id: int):
-    cat = (
-        db.query(Category)
-        .filter(
-            Category.id == category_id,
-            Category.user_id == user_id
-        )
-        .first()
-    )
-    if cat:
-        db.delete(cat)
-        db.commit()
+    db.delete(cat)
+    db.commit()
+    return True

@@ -13,7 +13,7 @@ from io import BytesIO
 import os
 
 from app.core.config import settings
-from app.utils.crypto_utils import decrypt_bytes
+from app.utils.crypto_utils import decrypt_bytes, decrypt_text
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
@@ -68,14 +68,12 @@ def download(
     if not doc.storage_path or not os.path.exists(doc.storage_path):
         raise HTTPException(status_code=404, detail="File not found on server")
 
-    # verschlüsselten Inhalt lesen
     with open(doc.storage_path, "rb") as f:
         encrypted_bytes = f.read()
 
     try:
         decrypted = decrypt_bytes(encrypted_bytes)
     except Exception:
-        # wenn irgendwas mit dem Schlüssel/Daten nicht passt
         raise HTTPException(status_code=500, detail="Failed to decrypt file")
 
     stream = BytesIO(decrypted)
@@ -94,7 +92,6 @@ def download(
             "X-Content-Type-Options": "nosniff",
         },
     )
-
 
 
 @router.post("/{doc_id}/rename-web")
@@ -146,16 +143,11 @@ def similar_documents(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    """
-    Liefert ähnliche Dokumente basierend auf OCR-Text
-    für alle Dokumente des eingeloggten Users.
-    JSON-Response, keine Templates.
-    """
     docs = (
         db.query(Document)
         .filter(
             Document.owner_user_id == user.id,
-            Document.is_deleted == False,  # noqa: E712
+            Document.is_deleted == False,
             Document.ocr_text.isnot(None),
         )
         .order_by(Document.id.asc())
@@ -169,9 +161,14 @@ def similar_documents(
             detail="Document not found or no OCR text",
         )
 
-    corpus = [d.ocr_text for d in docs]
-    idx = id_to_index[doc_id]
+    corpus = []
+    for d in docs:
+        if d.ocr_text:
+            corpus.append(decrypt_text(d.ocr_text))
+        else:
+            corpus.append("")
 
+    idx = id_to_index[doc_id]
     sims = compute_similarities(corpus, idx, top_k=5)
 
     result = [
@@ -182,4 +179,5 @@ def similar_documents(
         }
         for i, score in sims
     ]
+
     return {"base_id": doc_id, "similar": result}

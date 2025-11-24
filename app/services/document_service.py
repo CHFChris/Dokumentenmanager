@@ -5,6 +5,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import BinaryIO, Optional, List, Dict
+from tempfile import NamedTemporaryFile
 
 import sqlalchemy as sa
 from fastapi import HTTPException
@@ -24,17 +25,15 @@ from app.repositories.document_repo import (
     soft_delete_document,
     get_document_for_user,          # neue, einheitliche Getter-API
     update_document_name_and_path,  # atomare DB-Aktualisierung
+    set_ocr_text_for_document,      # NEU: verschlüsseltes OCR speichern
     # Legacy-Kompatibilität (nur für Wrapper unten verwendet):
     get_document_owned as _get_document_owned_legacy,
 )
 from app.schemas.document import DocumentListOut, DocumentOut
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
-from app.services.ocr_service import (
-    extract_text_from_pdf,
-    extract_text_from_image,
-    extract_text_from_docx,
-)
-from app.services.auto_tagging import guess_category_for_text
+from app.services.ocr_service import ocr_and_clean
+from app.services.auto_tagging import suggest_category_for_document
+from app.utils.crypto_utils import decrypt_bytes
 
 # ------------------------------------------------------------
 # Konfiguration
@@ -159,7 +158,8 @@ def dashboard_stats(db: Session, user_id: int) -> dict:
     word_stats = [
         {
             "id": d.id,
-            "words": len(d.ocr_text.split()) if d.ocr_text else 0,
+            # Hinweis: bei verschlüsseltem OCR ist das nur eine grobe Größe
+            "words": len((d.ocr_text or "").split()),
         }
         for d in most_words
     ]
@@ -192,6 +192,7 @@ def list_documents(
     EINFACHE Suche:
     - WHERE filename ILIKE ... OR ocr_text ILIKE ...
     - klassische Paginierung in der DB
+    (Beachte: bei verschlüsseltem OCR ist die Suche im Textfeld nicht sinnvoll.)
     """
     query = (
         db.query(Document)
@@ -356,7 +357,7 @@ def search_documents_advanced(
 
 
 # ------------------------------------------------------------
-# Upload (mit optionaler Kategorie + OCR + Auto-Tagging)
+# Upload (alte Variante – aktuell nicht für verschlüsselte Files genutzt)
 # ------------------------------------------------------------
 def upload_document(
     db: Session,
@@ -366,30 +367,19 @@ def upload_document(
     category_id: Optional[int] = None,
 ) -> DocumentOut:
     """
-    Speichert die Datei unter FILES_DIR/{user_id}/<uuid>.<ext>,
-    zeigt im UI aber den bereinigten Originalnamen (filename) an.
-    Optional: Kategorie setzen.
-    Zusätzlich:
-    - OCR-/Text-Content wird in documents.ocr_text gespeichert.
-    - Wenn keine Kategorie gewählt wurde, wird anhand des OCR-Texts versucht,
-      automatisch eine passende Kategorie zuzuweisen.
+    Legacy-Upload, belassen zur Rückwärtskompatibilität.
+    Neue Uploads laufen über app/api/routes/upload.py.
     """
-    # 1) User-Verzeichnis sicherstellen
     user_dir = os.path.join(FILES_DIR, str(user_id))
     ensure_dir(user_dir)
 
-    # 2) Anzeigename für UI/DB
     display_name = _sanitize_display_name(original_name)
-
-    # 3) Zielpfad (UUID + Original-Ext)
     _, target_path = _unique_target_path(user_dir, display_name)
 
-    # 4) Datei speichern + Hash berechnen
     size_bytes = save_stream_to_file(file_obj, target_path)
     with open(target_path, "rb") as fh:
         sha256_hex = sha256_of_stream(fh)
 
-    # 5) DB anlegen (+ erste Version)
     doc = create_document_with_version(
         db=db,
         user_id=user_id,
@@ -400,34 +390,6 @@ def upload_document(
         mime_type=None,
     )
 
-    # 6) OCR- / Text-Extraction (best effort, Fehler brechen Upload nicht ab)
-    ocr_text: Optional[str] = None
-    try:
-        lower_name = display_name.lower()
-        if lower_name.endswith(".pdf"):
-            ocr_text = extract_text_from_pdf(target_path)
-        elif lower_name.endswith((".jpg", ".jpeg", ".png")):
-            ocr_text = extract_text_from_image(target_path)
-        elif lower_name.endswith((".docx", ".doc")):
-            # Kein OCR, aber strukturierter Text-Read
-            ocr_text = extract_text_from_docx(target_path)
-    except Exception:
-        ocr_text = None
-
-    doc.ocr_text = ocr_text
-
-    # 7) Kategorie setzen:
-    #    - Wenn User Kategorie gewählt hat: diese nehmen
-    #    - Sonst versuchen, anhand OCR-Text automatisch eine Kategorie zu finden
-    if category_id is not None:
-        doc.category_id = category_id
-    else:
-        if doc.ocr_text:
-            auto_cat_id = guess_category_for_text(db, user_id, doc.ocr_text)
-            if auto_cat_id is not None:
-                doc.category_id = auto_cat_id
-
-    # 8) Änderungen speichern
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -522,6 +484,81 @@ def rename_document_service(db: Session, user_id: int, doc_id: int, new_name: st
 # ------------------------------------------------------------
 def remove_document(db: Session, user_id: int, doc_id: int) -> bool:
     return soft_delete_document(db, doc_id, user_id)
+
+
+# ------------------------------------------------------------
+# OCR + Auto-Kategorie für verschlüsselte Dateien
+# ------------------------------------------------------------
+def run_ocr_and_auto_category(
+    db: Session,
+    user_id: int,
+    doc: Document,
+) -> None:
+    """
+    Führt OCR auf einer *verschlüsselt gespeicherten* Datei aus und
+    speichert den OCR-Text verschlüsselt in der DB.
+    Zusätzlich wird – falls sinnvoll – automatisch eine Kategorie
+    vorgeschlagen und gesetzt.
+
+    - liest verschlüsselten Inhalt von doc.storage_path
+    - entschlüsselt per decrypt_bytes()
+    - schreibt Klartext in eine temporäre Datei
+    - führt ocr_and_clean() auf dem Tempfile aus
+    - speichert OCR-Texte mit set_ocr_text_for_document()
+    - wählt Kategorie via suggest_category_for_document()
+    """
+    if not doc.storage_path or not os.path.exists(doc.storage_path):
+        return
+
+    try:
+        with open(doc.storage_path, "rb") as fh:
+            encrypted = fh.read()
+        decrypted = decrypt_bytes(encrypted)
+    except Exception:
+        # Kein harter Fehler beim Upload, wenn Entschlüsselung scheitert
+        return
+
+    # Dateiendung für OCR bestimmen (für Tempfile-Suffix)
+    name_source = getattr(doc, "original_filename", None) or doc.filename or ""
+    suffix = ""
+    if "." in name_source:
+        suffix = "." + name_source.rsplit(".", 1)[-1].lower()
+
+    # Temporäre Datei mit Klartext-Inhalt
+    with NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
+        tmp.write(decrypted)
+        tmp.flush()
+        try:
+            ocr_plain = ocr_and_clean(path=tmp.name, lang="deu+eng", dpi=300)
+        except Exception:
+            return
+
+    ocr_plain = (ocr_plain or "").strip()
+    if not ocr_plain:
+        return
+
+    # OCR-Text verschlüsselt speichern
+    set_ocr_text_for_document(
+        db=db,
+        user_id=user_id,
+        doc_id=doc.id,
+        ocr_plaintext=ocr_plain,
+    )
+
+    # Kategorie vorschlagen (user-scope only)
+    cat = suggest_category_for_document(
+        db=db,
+        user_id=user_id,
+        ocr_plaintext=ocr_plain,
+        min_score=1,
+    )
+    if not cat:
+        return
+
+    doc.category_id = cat.id
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
 
 
 # ------------------------------------------------------------

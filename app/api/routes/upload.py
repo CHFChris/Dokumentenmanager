@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.utils.files import ensure_dir
 from app.repositories.document_repo import create_document_with_version
 from app.utils.crypto_utils import encrypt_bytes
+from app.services.document_service import run_ocr_and_auto_category
 
 router = APIRouter(prefix="", tags=["upload"])
 
@@ -100,6 +101,12 @@ async def _handle_upload_common(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+
+    # 8) OCR + Auto-Kategorie (best effort, Fehler sollen Upload nicht killen)
+    try:
+        run_ocr_and_auto_category(db, user.id, doc)
+    except Exception:
+        pass
 
     return doc
 
