@@ -25,15 +25,44 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     display_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
-    documents: Mapped[List["Document"]] = relationship("Document", back_populates="owner", cascade="all, delete-orphan", lazy="selectin")
-    email_verification_tokens: Mapped[List["EmailVerificationToken"]] = relationship("EmailVerificationToken", back_populates="user", cascade="all, delete-orphan", lazy="selectin")
-    password_reset_tokens: Mapped[List["PasswordResetToken"]] = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan", lazy="selectin")
+    documents: Mapped[List["Document"]] = relationship(
+        "Document",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    email_verification_tokens: Mapped[List["EmailVerificationToken"]] = relationship(
+        "EmailVerificationToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    password_reset_tokens: Mapped[List["PasswordResetToken"]] = relationship(
+        "PasswordResetToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     def __repr__(self) -> str:
-        return f"<User id={self.id} username={self.username!r} email={self.email!r} role_id={self.role_id} verified={self.is_verified}>"
+        return (
+            f"<User id={self.id} "
+            f"username={self.username!r} "
+            f"email={self.email!r} "
+            f"role_id={self.role_id} "
+            f"verified={self.is_verified}>"
+        )

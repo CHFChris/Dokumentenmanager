@@ -21,7 +21,7 @@ from app.db.database import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.document_version import DocumentVersion
-    from app.models.category import Category  # neu
+    from app.models.category import Category
 
 
 class Document(Base):
@@ -44,7 +44,6 @@ class Document(Base):
     # ------------------------------------------------------------
     folder_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
-    # Kategorie (für Filter etc.)
     category_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
         ForeignKey("categories.id", ondelete="SET NULL"),
@@ -57,8 +56,25 @@ class Document(Base):
     # ------------------------------------------------------------
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
+
+    original_filename: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    stored_name: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        unique=True,
+    )
+
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    checksum_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    checksum_sha256: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
     mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     # ------------------------------------------------------------
@@ -67,7 +83,7 @@ class Document(Base):
     ocr_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # ------------------------------------------------------------
-    # Speicher-Provider (lokal/S3/etc.)
+    # Speicher-Provider
     # ------------------------------------------------------------
     storage_provider_id: Mapped[int] = mapped_column(
         SmallInteger,
@@ -79,6 +95,7 @@ class Document(Base):
     # Flags & Zeit
     # ------------------------------------------------------------
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -107,11 +124,10 @@ class Document(Base):
     )
 
     # ------------------------------------------------------------
-    # Kompatibilitäts-Aliasse
+    # Kompatibilitäts-Aliasse (Dateiinformationen)
     # ------------------------------------------------------------
     @property
     def name(self) -> str:
-        """Alias für filename (z. B. im Frontend/alten Services)."""
         return self.filename
 
     @name.setter
@@ -120,7 +136,6 @@ class Document(Base):
 
     @property
     def size(self) -> int:
-        """Alias für size_bytes."""
         return self.size_bytes
 
     @size.setter
@@ -129,12 +144,38 @@ class Document(Base):
 
     @property
     def sha256(self) -> Optional[str]:
-        """Alias für checksum_sha256."""
         return self.checksum_sha256
 
     @sha256.setter
     def sha256(self, value: Optional[str]) -> None:
         self.checksum_sha256 = value
+
+    @property
+    def sha256_hash(self) -> Optional[str]:
+        return self.checksum_sha256
+
+    @sha256_hash.setter
+    def sha256_hash(self, value: Optional[str]) -> None:
+        self.checksum_sha256 = value
+
+    # ------------------------------------------------------------
+    # Kompatibilitäts-Aliasse (User / Owner)
+    # ------------------------------------------------------------
+    @property
+    def user_id(self) -> int:
+        return self.owner_user_id
+
+    @user_id.setter
+    def user_id(self, value: int) -> None:
+        self.owner_user_id = value
+
+    @property
+    def user(self) -> "User":
+        return self.owner
+
+    @user.setter
+    def user(self, value: "User") -> None:
+        self.owner = value
 
     # ------------------------------------------------------------
     # Debug

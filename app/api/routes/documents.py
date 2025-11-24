@@ -1,4 +1,3 @@
-# app/api/routes/documents.py
 from fastapi import (
     APIRouter,
     Depends,
@@ -8,8 +7,13 @@ from fastapi import (
     Form,
     Request,
 )
-from starlette.responses import FileResponse, RedirectResponse
+from starlette.responses import RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session
+from io import BytesIO
+import os
+
+from app.core.config import settings
+from app.utils.crypto_utils import decrypt_bytes
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
@@ -60,12 +64,37 @@ def download(
     doc = get_document_owned(db, doc_id, user.id)
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(
-        path=doc.storage_path,
-        filename=doc.filename,
-        headers={"X-Content-Type-Options": "nosniff"},
-        media_type=doc.mime_type or "application/octet-stream",
+
+    if not doc.storage_path or not os.path.exists(doc.storage_path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+
+    # verschlüsselten Inhalt lesen
+    with open(doc.storage_path, "rb") as f:
+        encrypted_bytes = f.read()
+
+    try:
+        decrypted = decrypt_bytes(encrypted_bytes)
+    except Exception:
+        # wenn irgendwas mit dem Schlüssel/Daten nicht passt
+        raise HTTPException(status_code=500, detail="Failed to decrypt file")
+
+    stream = BytesIO(decrypted)
+
+    download_name = (
+        getattr(doc, "original_filename", None)
+        or doc.filename
+        or f"document-{doc.id}"
     )
+
+    return StreamingResponse(
+        stream,
+        media_type=doc.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{download_name}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
 
 
 @router.post("/{doc_id}/rename-web")

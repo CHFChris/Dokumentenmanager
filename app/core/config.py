@@ -4,6 +4,7 @@ from pydantic import Field, EmailStr
 
 
 class Settings(BaseSettings):
+    files_fernet_key: str
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,  # .env keys dürfen groß/klein geschrieben sein
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------
     FILES_DIR: str = "./data/files"
     MAX_UPLOAD_MB: int = 50
+
+    # Fernet-Key für Datei-Verschlüsselung
+    # kommt aus der Umgebungsvariable FILES_FERNET_KEY
+    files_fernet_key: str = Field(..., env="FILES_FERNET_KEY")
 
     # ------------------------------------------------------------
     # 📩 SMTP / Mail
