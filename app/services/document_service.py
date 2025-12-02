@@ -236,7 +236,7 @@ def list_documents(
             id=r.id,
             name=r.filename,
             size=r.size_bytes,
-            sha256=(r.checksum_sha256 or ""),
+            sha256="",
             created_at=getattr(r, "created_at", None),
             category=(r.category.name if getattr(r, "category", None) else None),
         )
@@ -329,7 +329,7 @@ def search_documents_advanced(
             id=entry["doc"].id,
             name=entry["doc"].filename,
             size=entry["doc"].size_bytes,
-            sha256=(entry["doc"].checksum_sha256 or ""),
+            sha256="",
             created_at=getattr(entry["doc"], "created_at", None),
             category=(
                 entry["doc"].category.name
@@ -381,7 +381,7 @@ def upload_document(
         id=doc.id,
         name=doc.filename,
         size=doc.size_bytes,
-        sha256=(doc.checksum_sha256 or ""),
+        sha256="",
         created_at=getattr(doc, "created_at", None),
         category=(doc.category.name if getattr(doc, "category", None) else None),
     )
@@ -399,7 +399,7 @@ def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
         "id": doc.id,
             "name": doc.filename,
         "size": doc.size_bytes,
-        "sha256": doc.checksum_sha256 or "",
+        "sha256":"",
         "mime": doc.mime_type or "",
         "created_at": getattr(doc, "created_at", None),
         "storage_path": doc.storage_path,

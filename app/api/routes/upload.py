@@ -2,7 +2,6 @@
 from typing import Final, Optional
 
 import os
-import hashlib
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Form
@@ -14,7 +13,7 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.schemas.document import DocumentOut
 from app.utils.files import ensure_dir
-from app.utils.crypto_utils import encrypt_bytes
+from app.utils.crypto_utils import encrypt_bytes, compute_integrity_tag
 from app.repositories.document_repo import create_document_with_version
 from app.services.document_service import run_ocr_and_auto_category  # wichtig
 
@@ -23,7 +22,7 @@ router = APIRouter(prefix="", tags=["upload"])
 # Konfig
 MAX_UPLOAD_MB: Final[int] = int(getattr(settings, "MAX_UPLOAD_MB", 50))
 ALLOWED_MIME: Final[set[str]] = (
-    set(getattr(settings, "ALLOWED_MIME", "").split(","))  # aus env/Config
+    set(getattr(settings, "ALLOWED_MIME", "").split(","))
     if getattr(settings, "ALLOWED_MIME", "")
     else set()
 )
@@ -31,13 +30,6 @@ FILES_DIR: Final[str] = getattr(settings, "FILES_DIR", "./data/files")
 
 
 def _parse_category_id(raw: Optional[str]) -> Optional[int]:
-    """
-    HTML-Form schickt bei 'keine Kategorie' meist ''.
-    Wandelt:
-      '' / None -> None
-      '5'       -> 5
-      sonstiger Mist -> None
-    """
     if raw is None:
         return None
     raw = raw.strip()
@@ -55,13 +47,11 @@ async def _handle_upload_common(
     file: UploadFile,
     category_id: Optional[int] = None,
 ):
-    # 1) Basis-Validierungen
     if not file.filename:
         raise HTTPException(status_code=400, detail="filename is missing")
 
     content_type = (file.content_type or "").lower()
 
-    # MIME-Whitelist (optional)
     if ALLOWED_MIME and content_type not in ALLOWED_MIME:
         raise HTTPException(
             status_code=415,
@@ -71,10 +61,10 @@ async def _handle_upload_common(
             ),
         )
 
-    # 2) Datei in den Speicher lesen
+    # Datei laden
     raw_bytes = await file.read()
 
-    # Größenlimit prüfen
+    # Größenlimit
     max_bytes = MAX_UPLOAD_MB * 1024 * 1024
     size_bytes = len(raw_bytes)
     if size_bytes > max_bytes:
@@ -83,16 +73,16 @@ async def _handle_upload_common(
             detail=f"file too large (>{MAX_UPLOAD_MB} MB)",
         )
 
-    # 3) SHA256 berechnen (nur intern)
-    sha256_hex = hashlib.sha256(raw_bytes).hexdigest()
+    # NEU: HMAC statt SHA256
+    sha256_hex = compute_integrity_tag(raw_bytes)
 
-    # 4) stored_name generieren (zufälliger interner Name, nichts vom Original ableitbar)
-    stored_name = uuid4().hex  # 32 Hex-Zeichen
+    # interner Name
+    stored_name = uuid4().hex
 
-    # 5) verschlüsseln
+    # verschlüsseln
     encrypted_bytes = encrypt_bytes(raw_bytes)
 
-    # 6) Zielpfad: user-id + stored_name, kein Klartextname
+    # Zielpfad
     user_dir = os.path.join(FILES_DIR, str(user.id))
     ensure_dir(user_dir)
     target_path = os.path.join(user_dir, stored_name)
@@ -102,25 +92,23 @@ async def _handle_upload_common(
 
     original_name = os.path.basename(file.filename)
 
-    # 7) DB-Eintrag (Document + DocumentVersion)
+    # Datenbank
     doc = create_document_with_version(
         db=db,
         user_id=user.id,
-        filename=original_name,          # sichtbarer Titel in der UI
-        storage_path=target_path,        # verschlüsselter Inhalt unter stored_name
+        filename=original_name,
+        storage_path=target_path,
         size_bytes=size_bytes,
-        checksum_sha256=sha256_hex,
+        checksum_sha256=sha256_hex,  # jetzt HMAC
         mime_type=content_type or None,
         note="Initial upload",
     )
 
-    # neue Felder direkt am Objekt setzen, falls Modell sie kennt
     if hasattr(doc, "original_filename"):
         doc.original_filename = original_name
     if hasattr(doc, "stored_name"):
         doc.stored_name = stored_name
 
-    # Kategorie, falls vom User gewählt
     if category_id is not None and hasattr(doc, "category_id"):
         doc.category_id = category_id
 
@@ -128,7 +116,7 @@ async def _handle_upload_common(
     db.commit()
     db.refresh(doc)
 
-    # 8) OCR + Auto-Kategorie (best effort, Fehler werden geloggt aber nicht geworfen)
+    # OCR + Auto-Kategorie
     try:
         print(f"[UPLOAD] Starte run_ocr_and_auto_category für Doc {doc.id}")
         run_ocr_and_auto_category(
@@ -146,7 +134,7 @@ async def _handle_upload_common(
 @router.post("/upload", response_model=DocumentOut, status_code=200)
 async def upload_file(
     file: UploadFile = File(...),
-    category_id: Optional[str] = Form(None),  # kommt als String aus Formular/Client
+    category_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
@@ -157,19 +145,18 @@ async def upload_file(
         id=doc.id,
         name=doc.filename,
         size=doc.size_bytes,
-        sha256=(doc.checksum_sha256 or ""),
+        sha256="",
     )
 
 
 @router.post("/upload-web")
 async def upload_web(
     file: UploadFile = File(...),
-    category_id: Optional[str] = Form(None),  # kommt als String aus dem HTML-Form
+    category_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
     cat_id_int = _parse_category_id(category_id)
     await _handle_upload_common(db, user, file, category_id=cat_id_int)
 
-    # Nach dem Upload auf der Upload-Seite bleiben
     return RedirectResponse(url="/upload", status_code=303)
