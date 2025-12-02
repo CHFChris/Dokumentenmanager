@@ -11,7 +11,7 @@ from fastapi.security import HTTPBearer
 from fastapi.openapi.utils import get_openapi
 
 # --- DB Bootstrap ---
-from app.db.database import init_models  # Base/engine nur nötig, wenn du create_all nutzen willst
+from app.db.database import init_models
 
 # --- API-Router (JSON) ---
 from app.api.routes import (
@@ -19,7 +19,8 @@ from app.api.routes import (
     files as files_routes,
     users as users_routes,
     upload as upload_routes,
-    categories as categories_routes,  # NEU: Kategorien- und Keyword-Suggestions-API
+    categories as categories_routes,          # HTML /categories/...
+    categories_api as categories_api_routes,  # JSON /api/categories/...
 )
 
 # --- Web-Router (Jinja-Templates) ---
@@ -27,7 +28,7 @@ from app.web import routes_web
 
 
 # =============================================================================
-# 🚀 App-Instanz
+# App-Instanz
 # =============================================================================
 app = FastAPI(
     title="Dokumentenmanager",
@@ -39,42 +40,42 @@ app = FastAPI(
 
 
 # =============================================================================
-# 🗂️ Static Assets (CSS/JS/Images)
+# Static Assets (CSS/JS/Images)
 # =============================================================================
-# Mount /static -> app/web/static
 APP_DIR = Path(__file__).resolve().parent          # .../app
 STATIC_DIR = APP_DIR / "web" / "static"            # .../app/web/static
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # =============================================================================
-# 🧱 Startup: Models registrieren (und optional Tabellen anlegen)
+# Startup: Models registrieren
 # =============================================================================
 @app.on_event("startup")
 def on_startup() -> None:
-    # Registriert alle SQLAlchemy-Models (Import-Seite)
     init_models()
-    # Falls KEIN Alembic genutzt wird:
-    # from app.db.database import Base, engine
-    # Base.metadata.create_all(bind=engine)
+
+from app.api.routes import debug_ocr
+app.include_router(debug_ocr.router)
+
 
 
 # =============================================================================
-# 🔌 Router registrieren
+# Router registrieren
 # =============================================================================
 # JSON-APIs
 app.include_router(auth_routes.router, prefix="/auth")
 app.include_router(files_routes.router, prefix="/files")
 app.include_router(users_routes.router, prefix="/users")
 app.include_router(upload_routes.router)              # /upload
-app.include_router(categories_routes.router)          # /categories/... (Keyword-Suggestions etc.)
+app.include_router(categories_api_routes.router)      # /api/categories/...
 
 # Web (HTML/Jinja)
+app.include_router(categories_routes.router)          # /categories/...
 app.include_router(routes_web.router)
 
 
 # =============================================================================
-# 🏠 Root → Dashboard
+# Root → Dashboard
 # =============================================================================
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
@@ -82,7 +83,7 @@ def root() -> RedirectResponse:
 
 
 # =============================================================================
-# 🔐 Middleware: bei 401 auf HTML-Seiten zum Login umleiten
+# Middleware: bei 401 auf HTML-Seiten zum Login umleiten
 # =============================================================================
 @app.middleware("http")
 async def redirect_unauthenticated_html(request: Request, call_next):
@@ -110,7 +111,7 @@ async def redirect_unauthenticated_html(request: Request, call_next):
 
 
 # =============================================================================
-# 📜 OpenAPI: Bearer-Auth global aktivieren (Swagger 🔒 Button)
+# OpenAPI: Bearer-Auth global aktivieren
 # =============================================================================
 security = HTTPBearer()
 
@@ -133,7 +134,7 @@ def custom_openapi():
         "bearerFormat": "JWT",
     }
 
-    # Global Security → einzelne Endpoints können via openapi_extra={"security": []} opt-outen
+    # Global Security
     openapi_schema["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = openapi_schema

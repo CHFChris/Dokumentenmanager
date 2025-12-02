@@ -25,14 +25,6 @@ from app.db.database import get_db
 from app.core.config import settings
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
-# Category-Repo (für Filter / Auswahl)
-from app.repositories.category_repo import (
-    list_categories_for_user,
-    create_category,
-    delete_category,
-    rename_category,
-)
-
 # Services (zentrierte Logik)
 from app.services.document_service import (
     dashboard_stats,
@@ -44,7 +36,8 @@ from app.services.document_service import (
     rename_document_service,
 )
 
-# Repo-Funktionen (für Versionierung)
+# Repo-Funktionen (für Kategorien und Versionierung)
+from app.repositories.category_repo import list_categories_for_user
 from app.repositories.document_repo import (
     get_document_for_user,
     list_versions_for_document,
@@ -57,7 +50,6 @@ from app.models.category import Category
 
 # Auto-Tagging für Kategorie-Keyword-Vorschläge
 from app.services.auto_tagging import suggest_keywords_for_category
-
 
 # -------------------------------------------------------------
 # Router & Templates
@@ -133,7 +125,6 @@ def dashboard(
 ):
     stats = dashboard_stats(db, user.id)
 
-    # DocumentListOut -> echte Liste für das Template
     docs_result = list_documents(db, user.id, q=None, limit=10, offset=0)
     docs_list = getattr(docs_result, "items", docs_result)
 
@@ -147,6 +138,28 @@ def dashboard(
             "q": "",
             "error": None,
             "active": "dashboard",
+        },
+    )
+
+
+# -------------------------------------------------------------
+# Kategorie-Übersicht für Schlagwörter
+# -------------------------------------------------------------
+@router.get("/category-keywords", response_class=HTMLResponse)
+def category_keywords_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    categories = list_categories_for_user(db, user.id)
+
+    return templates.TemplateResponse(
+        "category_keywords.html",
+        {
+            "request": request,
+            "user": user,
+            "categories": categories,
+            "active": "categories",
         },
     )
 
@@ -176,7 +189,7 @@ def upload_page(
 async def upload_web(
     request: Request,
     file: UploadFile = File(...),
-    category_id: Optional[str] = Form(None),  # String, wird unten geparst
+    category_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
@@ -207,48 +220,6 @@ async def upload_web(
             },
             status_code=400,
         )
-
-
-# -------------------------------------------------------------
-# Kategorien im Web: anlegen / löschen / umbenennen
-# -------------------------------------------------------------
-@router.post("/categories/create-web", include_in_schema=False)
-def create_category_web(
-    request: Request,
-    name: str = Form(...),
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user_web),
-):
-    name_clean = (name or "").strip()
-    if not name_clean:
-        referer = request.headers.get("referer") or "/documents"
-        return RedirectResponse(url=referer, status_code=303)
-
-    create_category(db, user.id, name_clean)
-
-    referer = request.headers.get("referer") or "/documents"
-    return RedirectResponse(url=referer, status_code=303)
-
-
-@router.post("/categories/delete-web", include_in_schema=False)
-def delete_category_web(
-    category_id: int = Form(...),
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user_web),
-):
-    delete_category(db, user.id, category_id)
-    return RedirectResponse(url="/documents", status_code=303)
-
-
-@router.post("/categories/rename-web", include_in_schema=False)
-def rename_category_web(
-    category_id: int = Form(...),
-    new_name: str = Form(...),
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user_web),
-):
-    rename_category(db, user.id, category_id, new_name.strip())
-    return RedirectResponse(url="/documents", status_code=303)
 
 
 # -------------------------------------------------------------
@@ -303,7 +274,6 @@ def category_update_keywords_web(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user_web),
 ):
-    # keywords_text ist z. B. "rechnung, kunde, betrag, steuernummer"
     cleaned = [k.strip() for k in keywords_text.split(",") if k.strip()]
 
     category = (
@@ -338,7 +308,7 @@ def category_update_keywords_web(
 def documents_page(
     request: Request,
     q: Optional[str] = None,
-    category_id: Optional[str] = Query(None),  # String, wird unten geparst
+    category_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):

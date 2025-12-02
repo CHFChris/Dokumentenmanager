@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+
+  <!-- Header / Toolbar -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="h4 mb-1">Kategorien und Schlagwörter</h1>
+      <div class="text-muted small">
+        Eigene Schlagwörter pflegen und KI-Vorschläge aus OCR verwalten.
+      </div>
+    </div>
+    <div>
+      <a href="/documents" class="btn btn-outline-secondary btn-sm">
+        Zurück zu Dokumenten
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- linke Spalte: Kategorienliste -->
+    <div class="col-lg-4 col-md-5">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header py-2 bg-light border-0">
+          <span class="fw-semibold text-uppercase small text-muted">Kategorien</span>
+        </div>
+        <div class="card-body pt-2 pb-3">
+          <p class="small text-muted mb-2">
+            Wähle eine Kategorie aus, um deren Schlagwörter zu bearbeiten.
+          </p>
+          <div id="category-list"
+               class="list-group list-group-flush border rounded"
+               style="max-height: 70vh; overflow-y: auto;">
+            {% for cat in categories %}
+            <button type="button"
+                    class="list-group-item list-group-item-action category-item d-flex justify-content-between align-items-center"
+                    data-category-id="{{ cat.id }}"
+                    data-category-name="{{ cat.name }}">
+              <span class="text-truncate">{{ cat.name }}</span>
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- rechte Spalte: Schlagwörter -->
+    <div class="col-lg-8 col-md-7">
+
+      <!-- Platzhalter, wenn keine Kategorie ausgewählt ist -->
+      <div id="no-category-panel" class="card shadow-sm border-0">
+        <div class="card-body py-4">
+          <div class="mb-2 fw-semibold">Keine Kategorie ausgewählt</div>
+          <div class="small text-muted">
+            Wähle links eine Kategorie aus, um eigene Schlagwörter und KI-Vorschläge anzuzeigen und zu bearbeiten.
+          </div>
+        </div>
+      </div>
+
+      <div id="category-keywords-panel" style="display: none;">
+        <!-- Aktive Kategorie Kopfbereich -->
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between">
+            <div class="mb-2 mb-md-0">
+              <div class="small text-uppercase text-muted">Aktive Kategorie</div>
+              <div class="fw-semibold fs-5" id="category-title">Kategorie</div>
+            </div>
+            <div class="text-end small text-muted">
+              Vorschläge basieren auf OCR-Texten von Dokumenten in dieser Kategorie.
+            </div>
+          </div>
+        </div>
+
+        <!-- Eigene Keywords (volle Breite) -->
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-header py-2 bg-light border-0 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Eigene Schlagwörter</span>
+            <span class="badge bg-white text-muted border small">
+              Manuell gepflegt
+            </span>
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-2">
+              Diese Schlagwörter hast du selbst für die Kategorie definiert.
+            </p>
+
+            <!-- Liste eigener Keywords -->
+            <div id="existing-keywords" class="mb-3">
+              <span class="text-muted small">Keine eigenen Schlagwörter definiert.</span>
+            </div>
+
+            <!-- Eingabe / Hinzufügen -->
+            <div class="row g-2 align-items-center mb-2">
+              <div class="col-sm-8 col-12">
+                <input type="text"
+                       id="new-keyword-input"
+                       class="form-control form-control-sm"
+                       placeholder="Neues Schlagwort eingeben">
+              </div>
+              <div class="col-sm-4 col-12 text-sm-end">
+                <button class="btn btn-primary btn-sm w-100 w-sm-auto"
+                        id="add-keyword-btn"
+                        type="button">
+                  Schlagwort hinzufügen
+                </button>
+              </div>
+            </div>
+
+            <div class="small text-muted">
+              Einzelne Schlagwörter können über das „x“ gelöscht werden.
+              Änderungen werden automatisch gespeichert.
+            </div>
+          </div>
+        </div>
+
+        <!-- OCR-Vorschläge (volle Breite) -->
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-header py-2 bg-light border-0 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Schlagwörter aus OCR</span>
+            <span class="badge bg-white text-muted border small">
+              KI-Vorschläge
+            </span>
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-2">
+              Diese Schlagwörter wurden automatisch aus den OCR-Texten
+              deiner Dokumente in dieser Kategorie erkannt.
+            </p>
+
+            <!-- Liste der Vorschläge -->
+            <div id="suggested-keywords" class="mb-2">
+              <span class="text-muted small">Noch keine Vorschläge vorhanden.</span>
+            </div>
+
+            <div class="small text-muted">
+              Das „x“ blendet einzelne Vorschläge aus. Die Vorschläge selbst werden
+              nicht dauerhaft gespeichert, sondern dienen als Orientierung.
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+let currentCategoryId = null;
+let currentKeywords = [];
+
+// Hilfsfunktion: Badge für ein Keyword (mit X-Button)
+function createKeywordBadge(text, options) {
+  const { extraClass, deletable, onDelete } = options || {};
+
+  const span = document.createElement("span");
+  span.className =
+    "badge rounded-pill border me-1 mb-1 d-inline-flex align-items-center " +
+    (extraClass || "");
+
+  const label = document.createElement("span");
+  label.textContent = text;
+  label.className = "me-1";
+  span.appendChild(label);
+
+  if (deletable && typeof onDelete === "function") {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm btn-link p-0 text-muted";
+    btn.innerHTML = "&times;";
+    btn.style.lineHeight = "1";
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      onDelete();
+    });
+    span.appendChild(btn);
+  }
+
+  return span;
+}
+
+// Rendering: eigene Keywords
+function renderExistingKeywords() {
+  const container = document.getElementById("existing-keywords");
+  container.innerHTML = "";
+
+  if (!currentKeywords || currentKeywords.length === 0) {
+    container.innerHTML =
+      '<span class="text-muted small">Keine eigenen Schlagwörter definiert.</span>';
+    return;
+  }
+
+  currentKeywords.forEach((kw) => {
+    const badge = createKeywordBadge(kw, {
+      extraClass: "bg-light text-body",
+      deletable: true,
+      onDelete: () => removeKeyword(kw),
+    });
+    container.appendChild(badge);
+  });
+}
+
+// Rendering: Vorschlags-Keywords
+function renderSuggestedKeywords(list) {
+  const container = document.getElementById("suggested-keywords");
+  container.innerHTML = "";
+
+  if (!list || list.length === 0) {
+    container.innerHTML =
+      '<span class="text-muted small">Noch keine Vorschläge vorhanden.</span>';
+    return;
+  }
+
+  list.forEach((kw) => {
+    const badge = createKeywordBadge(kw, {
+      extraClass: "bg-white text-body",
+      deletable: true,
+      onDelete: () => {
+        badgeRef.remove();
+      },
+    });
+    const badgeRef = badge;
+    container.appendChild(badgeRef);
+  });
+}
+
+// API: Keywords speichern (PATCH)
+function saveKeywords() {
+  if (!currentCategoryId) {
+    return;
+  }
+  return fetch(`/api/categories/${currentCategoryId}/keywords`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ keywords: currentKeywords }),
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+      return response.json();
+    })
+    .then((data) => {
+      const raw = data.keywords || "";
+      currentKeywords = raw
+        .split(",")
+        .map((k) => k.trim())
+        .filter((k) => k.length > 0);
+      renderExistingKeywords();
+    })
+    .catch((err) => {
+      console.error("Fehler beim Speichern der Keywords:", err);
+    });
+}
+
+// Keyword hinzufügen
+function addKeywordFromInput() {
+  if (!currentCategoryId) {
+    return;
+  }
+  const input = document.getElementById("new-keyword-input");
+  const value = (input.value || "").trim();
+  if (!value) {
+    return;
+  }
+
+  if (!currentKeywords.includes(value)) {
+    currentKeywords.push(value);
+  }
+  input.value = "";
+  renderExistingKeywords();
+  saveKeywords();
+}
+
+// Keyword entfernen
+function removeKeyword(kw) {
+  if (!currentCategoryId) {
+    return;
+  }
+  currentKeywords = currentKeywords.filter((k) => k !== kw);
+  renderExistingKeywords();
+  saveKeywords();
+}
+
+// UI-Update für eine Kategorie
+function loadCategoryKeywords(categoryId, categoryName) {
+  currentCategoryId = categoryId;
+  const panel = document.getElementById("category-keywords-panel");
+  const noPanel = document.getElementById("no-category-panel");
+  const titleEl = document.getElementById("category-title");
+  const existingEl = document.getElementById("existing-keywords");
+  const suggestedEl = document.getElementById("suggested-keywords");
+
+  titleEl.textContent = categoryName;
+
+  panel.style.display = "block";
+  noPanel.style.display = "none";
+
+  existingEl.innerHTML = '<span class="text-muted small">Lade Daten...</span>';
+  suggestedEl.innerHTML = '<span class="text-muted small">Lade Daten...</span>';
+
+  fetch(`/api/categories/${categoryId}/keyword-suggestions`)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+      return response.json();
+    })
+    .then((data) => {
+      currentKeywords =
+        (data.existing_keywords || []).map((k) => String(k).trim());
+      renderExistingKeywords();
+
+      renderSuggestedKeywords(data.suggested_keywords || []);
+    })
+    .catch((err) => {
+      console.error("Fehler beim Laden der Keyword-Suggestions:", err);
+      existingEl.innerHTML =
+        '<span class="text-danger small">Fehler beim Laden der Daten.</span>';
+      suggestedEl.innerHTML =
+        '<span class="text-danger small">Fehler beim Laden der Daten.</span>';
+    });
+}
+
+// Click-Handler für Kategorienliste
+document.addEventListener("DOMContentLoaded", function () {
+  const items = document.querySelectorAll(".category-item");
+  items.forEach((item) => {
+    item.addEventListener("click", function () {
+      items.forEach((it) => it.classList.remove("active"));
+      this.classList.add("active");
+
+      const catId = this.getAttribute("data-category-id");
+      const catName = this.getAttribute("data-category-name");
+      loadCategoryKeywords(catId, catName);
+    });
+  });
+
+  const addBtn = document.getElementById("add-keyword-btn");
+  addBtn.addEventListener("click", function () {
+    addKeywordFromInput();
+  });
+
+  const input = document.getElementById("new-keyword-input");
+  input.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      addKeywordFromInput();
+    }
+  });
+});
+</script>
+{% endblock %}

@@ -1,58 +1,54 @@
 # app/services/auto_tagging.py
 from __future__ import annotations
 
-from typing import List, Optional
 from collections import Counter
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.category import Category
 from app.models.document import Document
-from app.utils.crypto_utils import decrypt_text
+from app.models.category import Category
 from app.schemas.category import CategoryKeywordSuggestionOut
+from app.utils.crypto_utils import decrypt_text
 
 
-# ------------------------------------------------------------
-# Hilfsfunktionen
-# ------------------------------------------------------------
-def _normalize(text: str) -> str:
-    return (text or "").lower().strip()
+# sehr einfache Stopwort-Liste (de + en)
+SIMPLE_STOPWORDS = {
+    "der", "die", "das", "und", "oder", "ein", "eine", "einer", "einem", "einen",
+    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "für",
+    "an", "am", "als", "zu", "zum", "zur", "bei", "aus", "dem",
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "at", "by",
+    "this", "that", "these", "those", "it", "its", "be", "was", "were", "are",
+}
 
 
-def _split_keywords(raw: Optional[str]) -> List[str]:
+def _tokenize(text: str) -> List[str]:
     """
-    Keywords aus DB-Wert extrahieren:
-    - falls verschlüsselt: entschlüsseln
-    - Kommas/Semikolons trennen
-    - saubere Liste zurückgeben
+    Sehr einfache Tokenisierung:
+    - lowercasing
+    - split auf whitespace
+    - Filter: Länge >= 3, kein reines Sonderzeichen, keine Stopwörter
     """
-    if not raw:
+    if not text:
         return []
 
-    plain = decrypt_text(raw)  # bei Altbestand Klartext -> einfach Rückgabe
-    parts = []
-    for chunk in plain.replace(";", ",").split(","):
-        t = chunk.strip().lower()
-        if t:
-            parts.append(t)
-    return parts
+    raw_tokens = text.lower().split()
+    tokens: List[str] = []
+    for t in raw_tokens:
+        t = t.strip(".,;:!?()[]{}\"'`<>|/\\+-=_")
+        if not t:
+            continue
+        if len(t) < 3:
+            continue
+        if t in SIMPLE_STOPWORDS:
+            continue
+        tokens.append(t)
+    return tokens
 
 
-def _score_category_for_text(keywords: List[str], text: str) -> int:
-    """
-    Sehr einfache Heuristik:
-    Score = Anzahl Keywords, die im Text vorkommen.
-    """
-    if not keywords or not text:
-        return 0
-
-    text_norm = _normalize(text)
-    return sum(1 for kw in keywords if kw and kw in text_norm)
-
-
-# ------------------------------------------------------------
-# 1) Kategorie automatisch vorschlagen (Upload)
-# ------------------------------------------------------------
+# -------------------------------------------------------------------
+# 1) Kategorie aus OCR-Text vorschlagen (für Auto-Kategorisierung)
+# -------------------------------------------------------------------
 def suggest_category_for_document(
     db: Session,
     user_id: int,
@@ -60,25 +56,36 @@ def suggest_category_for_document(
     min_score: int = 1,
 ) -> Optional[Category]:
     """
-    Wählt die Kategorie des Users mit dem höchsten Keyword-Match.
-    - Kategorien des Users (user_id)
-    - Keywords entschlüsselt
-    - OCR-Text kommt bereits als Klartext (aus ocr_service)
+    Bestimmt anhand des OCR-Textes eine passende Kategorie für den User.
+    - Nutzt die definierten Keywords der Kategorien (category.keywords)
+    - very simple Scoring: jedes Keyword-Vorkommen erhöht den Score
+    - gibt die Kategorie mit höchstem Score zurück, wenn Score >= min_score
     """
+    text = (ocr_plaintext or "").lower()
+    if not text.strip():
+        return None
+
     categories: List[Category] = (
         db.query(Category)
         .filter(Category.user_id == user_id)
         .all()
     )
-    if not categories:
-        return None
 
-    best_cat = None
-    best_score = 0
+    best_cat: Optional[Category] = None
+    best_score: int = 0
 
     for cat in categories:
-        kws = _split_keywords(cat.keywords)
-        score = _score_category_for_text(kws, ocr_plaintext)
+        if not cat.keywords:
+            continue
+
+        keywords = [k.strip().lower() for k in cat.keywords.split(",") if k.strip()]
+        if not keywords:
+            continue
+
+        score = 0
+        for kw in keywords:
+            if kw and kw in text:
+                score += 1
 
         if score > best_score:
             best_score = score
@@ -90,9 +97,28 @@ def suggest_category_for_document(
     return best_cat
 
 
-# ------------------------------------------------------------
-# 2) Keyword-Vorschläge für Kategorie
-# ------------------------------------------------------------
+# Rückwärtskompatibilität, falls irgendwo noch verwendet:
+def guess_category_for_text(
+    db: Session,
+    user_id: int,
+    text: str,
+    min_score: int = 1,
+) -> Optional[int]:
+    """
+    Alte Helper-Funktion, liefert nur die Kategorie-ID.
+    """
+    cat = suggest_category_for_document(
+        db=db,
+        user_id=user_id,
+        ocr_plaintext=text,
+        min_score=min_score,
+    )
+    return cat.id if cat else None
+
+
+# -------------------------------------------------------------------
+# 2) Schlagwörter aus OCR-Texten für eine Kategorie vorschlagen
+# -------------------------------------------------------------------
 def suggest_keywords_for_category(
     db: Session,
     user_id: int,
@@ -100,12 +126,16 @@ def suggest_keywords_for_category(
     top_n: int = 15,
 ) -> CategoryKeywordSuggestionOut:
     """
-    Schlägt Keywords für eine Kategorie vor:
-    - Nur Kategorie des Users
-    - Nur Dokumente des Users
-    - OCR-Texte entschlüsselt
-    - Häufigste Wörter als neue Keywords
+    Liefert Schlagwort-Vorschläge für eine Kategorie basierend auf allen
+    OCR-Texten der Dokumente dieses Users in dieser Kategorie.
+
+    WICHTIG:
+    - ocr_text ist in der DB verschlüsselt gespeichert -> hier wieder entschlüsseln
+    - Tokens werden gezählt und nach Häufigkeit sortiert
+    - bereits vorhandene Category-Keywords werden nicht nochmal vorgeschlagen
     """
+
+    # 1) Kategorie sicherstellen (user-scope)
     category: Optional[Category] = (
         db.query(Category)
         .filter(
@@ -115,49 +145,65 @@ def suggest_keywords_for_category(
         .first()
     )
     if not category:
-        raise ValueError("Category not found or forbidden")
+        raise ValueError("Category not found")
 
-    existing_kws = set(_split_keywords(category.keywords))
-
-    # Dokumente dieser Kategorie
+    # 2) Dokumente der Kategorie + OCR-Text holen
     docs: List[Document] = (
         db.query(Document)
         .filter(
             Document.owner_user_id == user_id,
-            Document.category_id == category.id,
-            Document.is_deleted.is_(False),
+            Document.category_id == category_id,
             Document.ocr_text.isnot(None),
         )
         .all()
     )
 
+    print(f"[KEYWORDS] Kategorie {category_id}: {len(docs)} Dokument(e) mit OCR-Text gefunden")
+
+    # 3) Existierende Keywords der Kategorie (vom User eingetragen)
+    existing_keywords: List[str] = []
+    if category.keywords:
+        existing_keywords = [
+            k.strip()
+            for k in category.keywords.split(",")
+            if k.strip()
+        ]
+
+    existing_lower = {k.lower() for k in existing_keywords}
+
+    # 4) OCR-Texte entschlüsseln und tokenisieren
     counter: Counter[str] = Counter()
 
-    for doc in docs:
-        if not doc.ocr_text:
+    for d in docs:
+        enc = d.ocr_text
+        if not enc:
             continue
 
-        text = decrypt_text(doc.ocr_text)
-        text = _normalize(text)
-        if not text:
-            continue
+        # Verschlüsselten OCR-Text entschlüsseln
+        try:
+            plain = decrypt_text(enc)
+        except Exception:
+            # Fallback: falls doch Klartext gespeichert ist
+            plain = enc
 
-        tokens = [
-            t.strip(".,;:!?()[]{}\"'")
-            for t in text.split()
-            if len(t) >= 3
-        ]
+        tokens = _tokenize(plain)
         counter.update(tokens)
 
-    suggestions = []
-    for word, _freq in counter.most_common():
-        if word in existing_kws:
+    # 5) Tokens nach Häufigkeit sortieren und vorhandene Keywords rausfiltern
+    suggested: List[str] = []
+    for token, _count in counter.most_common():
+        if token.lower() in existing_lower:
             continue
-        suggestions.append(word)
-        if len(suggestions) >= top_n:
+        suggested.append(token)
+        if len(suggested) >= top_n:
             break
 
+    print(f"[KEYWORDS] Vorschläge für Kategorie {category_id}: {suggested}")
+
+    # 6) Objekt für API zurückgeben (CategoryKeywordSuggestionOut)
     return CategoryKeywordSuggestionOut(
         category_id=category.id,
-        suggestions=suggestions,
+        category_name=category.name,
+        existing_keywords=existing_keywords,
+        suggested_keywords=suggested,
     )
