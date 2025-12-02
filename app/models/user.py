@@ -37,6 +37,13 @@ class User(Base):
         nullable=True,
     )
 
+    # NEU: Spracheinstellungen des Users
+    language: Mapped[Optional[str]] = mapped_column(
+        String(10),
+        nullable=True,
+        default="de"
+    )
+
     documents: Mapped[List["Document"]] = relationship(
         "Document",
         back_populates="owner",
@@ -64,5 +71,6 @@ class User(Base):
             f"username={self.username!r} "
             f"email={self.email!r} "
             f"role_id={self.role_id} "
+            f"language={self.language!r} "
             f"verified={self.is_verified}>"
         )

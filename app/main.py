@@ -13,17 +13,18 @@ from fastapi.openapi.utils import get_openapi
 # --- DB Bootstrap ---
 from app.db.database import init_models
 
-# --- API-Router (JSON) ---
+# --- API-Router (JSON + Profile) ---
 from app.api.routes import (
     auth as auth_routes,
     files as files_routes,
     users as users_routes,
     upload as upload_routes,
-    categories as categories_routes,          # HTML /categories/...
+    categories as categories_routes,        # HTML /categories/...
     categories_api as categories_api_routes,  # JSON /api/categories/...
+    profile as profile_routes,               # NEU: Profil-Routen
 )
 
-# --- Web-Router (Jinja-Templates) ---
+# --- Web-Router (Jinja) ---
 from app.web import routes_web
 
 
@@ -40,37 +41,42 @@ app = FastAPI(
 
 
 # =============================================================================
-# Static Assets (CSS/JS/Images)
+# Static Assets
 # =============================================================================
-APP_DIR = Path(__file__).resolve().parent          # .../app
-STATIC_DIR = APP_DIR / "web" / "static"            # .../app/web/static
+APP_DIR = Path(__file__).resolve().parent
+STATIC_DIR = APP_DIR / "web" / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # =============================================================================
-# Startup: Models registrieren
+# Startup
 # =============================================================================
 @app.on_event("startup")
 def on_startup() -> None:
     init_models()
 
+
+# Debug-OCR Router
 from app.api.routes import debug_ocr
 app.include_router(debug_ocr.router)
-
 
 
 # =============================================================================
 # Router registrieren
 # =============================================================================
+
 # JSON-APIs
 app.include_router(auth_routes.router, prefix="/auth")
 app.include_router(files_routes.router, prefix="/files")
 app.include_router(users_routes.router, prefix="/users")
-app.include_router(upload_routes.router)              # /upload
-app.include_router(categories_api_routes.router)      # /api/categories/...
+app.include_router(profile_routes.router)
 
-# Web (HTML/Jinja)
-app.include_router(categories_routes.router)          # /categories/...
+
+app.include_router(upload_routes.router)                      # /upload
+app.include_router(categories_api_routes.router)              # /api/categories/...
+
+# Web (HTML / Jinja)
+app.include_router(categories_routes.router)                  # /categories/...
 app.include_router(routes_web.router)
 
 
@@ -83,14 +89,10 @@ def root() -> RedirectResponse:
 
 
 # =============================================================================
-# Middleware: bei 401 auf HTML-Seiten zum Login umleiten
+# Middleware: 401 → Login umleiten (nur HTML)
 # =============================================================================
 @app.middleware("http")
 async def redirect_unauthenticated_html(request: Request, call_next):
-    """
-    - JSON-Clients erhalten weiter 401.
-    - HTML-GETs (ohne /auth, /docs, /openapi, /static) werden auf Login umgeleitet.
-    """
     response = await call_next(request)
 
     accept = request.headers.get("accept", "")
@@ -134,7 +136,6 @@ def custom_openapi():
         "bearerFormat": "JWT",
     }
 
-    # Global Security
     openapi_schema["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = openapi_schema

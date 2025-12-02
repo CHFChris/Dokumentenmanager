@@ -23,6 +23,7 @@ MAX_PWD_LEN_BCRYPT_SAFE = 64
 # Optional: aus .env konfigurierbar, Standard = "argon2"
 PASSWORD_SCHEME = getattr(settings, "PASSWORD_SCHEME", "argon2").lower().strip()  # "argon2" | "bcrypt"
 
+
 # --- Hash-Schema-Erkennung ohne passlib.identify (über Präfixe) ---
 def _scheme_of(hash_str: str) -> str:
     if not hash_str:
@@ -46,15 +47,23 @@ def hash_password(password: str) -> str:
     if PASSWORD_SCHEME == "argon2":
         # Solide Default-Parameter (OWASP-orientiert; lokal noch performant)
         return argon2.using(
-            type="ID",          # Argon2id
-            time_cost=2,        # Rechendurchläufe
+            type="ID",            # Argon2id
+            time_cost=2,          # Rechendurchläufe
             memory_cost=102_400,  # ~100 MiB
-            parallelism=8
+            parallelism=8,
         ).hash(password)
     else:
         # bcrypt_sha256 umgeht 72-Byte-Limit via Hash-vor-Bcrypt.
         # Wir kappen dennoch auf 64 Zeichen (Policy & UI-Konsistenz).
         return bcrypt_sha256.hash(password[:MAX_PWD_LEN_BCRYPT_SAFE])
+
+
+def get_password_hash(password: str) -> str:
+    """
+    Kompatible Wrapper-Funktion für Passwort-Hashing.
+    Signatur: str -> str (für FastAPI/OAuth2-Utilities etc.).
+    """
+    return hash_password(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
@@ -75,8 +84,8 @@ def verify_password(password: str, password_hash: str) -> bool:
 
         # Fallback (sollte selten passieren): beide probieren
         return (
-            argon2.verify(password, password_hash) or
-            bcrypt_sha256.verify(password[:MAX_PWD_LEN_BCRYPT_SAFE], password_hash)
+            argon2.verify(password, password_hash)
+            or bcrypt_sha256.verify(password[:MAX_PWD_LEN_BCRYPT_SAFE], password_hash)
         )
     except Exception:
         # Keine sensiblen Details leaken; False zurückgeben
@@ -98,6 +107,7 @@ def hash_token(token: str) -> str:
 
 ALGORITHM = "HS256"
 
+
 class JWTService:
     def __init__(self, secret: str, algorithm: str = ALGORITHM):
         self.secret = secret
@@ -107,7 +117,7 @@ class JWTService:
         self,
         subject: str | int,
         expires_delta: timedelta,
-        claims: Optional[dict[str, Any]] = None
+        claims: Optional[dict[str, Any]] = None,
     ) -> str:
         """JWT erstellen (mit Ablaufzeit, Subject und optionalen Claims)."""
         now = datetime.now(timezone.utc)
