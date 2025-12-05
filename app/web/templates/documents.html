@@ -129,7 +129,7 @@
             <th>Category</th>
             <th>Size</th>
             <th>Date</th>
-            <th style="width:150px">Actions</th>
+            <th style="width:200px">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -166,7 +166,13 @@
                 {% endif %}
               </td>
               <td class="row" style="gap:6px">
-                <a class="btn" href="/documents/{{ d.id }}">View</a>
+                <a
+                  href="/documents/{{ d.id }}/view"
+                  class="btn ghost"
+                  style="font-size:13px; padding:4px 8px;"
+                >
+                  Anzeigen
+                </a>
                 <a class="btn" href="/documents/{{ d.id }}/download">Download</a>
                 <form method="post" action="/files/{{ d.id }}/delete-web"
                       onsubmit="return confirm('Delete this file?')">

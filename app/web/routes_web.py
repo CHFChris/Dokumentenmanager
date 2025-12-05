@@ -47,6 +47,7 @@ from app.repositories.document_repo import (
 
 # Modelle
 from app.models.category import Category
+from app.models.document import Document  # NEU: für /documents/{document_id}/view
 
 # Auto-Tagging für Kategorie-Keyword-Vorschläge
 from app.services.auto_tagging import suggest_keywords_for_category
@@ -363,6 +364,29 @@ def document_detail_page(
             "user": user,
             "doc": doc,
             "categories": categories,
+            "active": "documents",
+        },
+    )
+
+
+# Neue Detailseite: /documents/{document_id}/view
+@router.get("/documents/{document_id}/view", response_class=HTMLResponse)
+def document_view_page(
+    document_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    doc = get_document_for_user(db, user.id, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return templates.TemplateResponse(
+        "document_view.html",
+        {
+            "request": request,
+            "user": user,
+            "doc": doc,
             "active": "documents",
         },
     )

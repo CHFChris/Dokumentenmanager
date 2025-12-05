@@ -95,8 +95,14 @@
       </div>
       <div class="px-6 py-4 space-y-6 text-sm">
 
-        <!-- Download / Delete -->
+        <!-- Anzeigen / Download / Delete -->
         <div class="flex gap-3">
+          <a
+            href="/documents/{{ doc.id }}/view"
+            class="flex-1 inline-flex justify-center rounded-lg px-4 py-2 text-sm font-semibold border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+          >
+            Anzeigen
+          </a>
           <a
             href="/documents/{{ doc.id }}/download"
             class="flex-1 inline-flex justify-center rounded-lg px-4 py-2 text-sm font-semibold bg-gray-900 text-white"

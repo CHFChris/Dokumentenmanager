@@ -3,16 +3,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Form, HTTPException
-from starlette.requests import Request
-from starlette.responses import RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_web, CurrentUser
+from app.core.security import verify_password, get_password_hash
 from app.db.database import get_db
 from app.web.templates import templates
-from app.core.security import verify_password, get_password_hash
-from app.models.user import User  # dein User-ORM-Modell
+from app.models.user import User
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -34,6 +33,8 @@ def profile_page(
             "user": db_user,
             "pw_error": None,
             "pw_success": None,
+            "delete_error": None,
+            "delete_success": None,
         },
     )
 
@@ -49,7 +50,6 @@ def update_basic_profile(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Name auf display_name mappen (entspricht deinem Modell)
     db_user.display_name = name.strip()
     db_user.language = language.strip()
 
@@ -81,6 +81,8 @@ def change_password(
                 "user": db_user,
                 "pw_error": "Das aktuelle Passwort ist falsch.",
                 "pw_success": None,
+                "delete_error": None,
+                "delete_success": None,
             },
             status_code=400,
         )
@@ -94,6 +96,8 @@ def change_password(
                 "user": db_user,
                 "pw_error": "Die neuen Passwörter stimmen nicht überein.",
                 "pw_success": None,
+                "delete_error": None,
+                "delete_success": None,
             },
             status_code=400,
         )
@@ -107,6 +111,8 @@ def change_password(
                 "user": db_user,
                 "pw_error": "Neues Passwort muss mindestens 8 Zeichen lang sein.",
                 "pw_success": None,
+                "delete_error": None,
+                "delete_success": None,
             },
             status_code=400,
         )
@@ -127,6 +133,8 @@ def change_password(
             "user": db_user,
             "pw_error": None,
             "pw_success": "Passwort wurde erfolgreich geändert.",
+            "delete_error": None,
+            "delete_success": None,
         },
     )
 
@@ -154,26 +162,62 @@ def change_email(
 
 @router.post("/delete-account")
 def delete_account(
-    current_password: str = Form(...),
-    confirm_delete: str = Form(...),
+    request: Request,
+    current_password_delete: str = Form(...),
+    confirm_delete: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user_web),
 ):
-    """
-    confirm_delete: zweite Sicherheitsabfrage, z. B. 'JA'.
-    """
-    if confirm_delete.strip().upper() != "JA":
-        raise HTTPException(status_code=400, detail="Löschung nicht bestätigt")
+    # 1) Echten DB-User holen
+    db_user: User | None = (
+        db.query(User)
+        .filter(User.id == current_user.id)
+        .first()
+    )
 
-    db_user = db.query(User).filter(User.id == current_user.id).first()
     if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # Fallback: User existiert nicht mehr → zurück zum Login
+        return RedirectResponse(url="/auth/login-web", status_code=303)
 
-    if not verify_password(current_password, db_user.password_hash):
-        raise HTTPException(status_code=400, detail="Aktuelles Passwort ist falsch")
+    # 2) Checkbox prüfen
+    if not confirm_delete:
+        return templates.TemplateResponse(
+            "profile.html",
+            {
+                "request": request,
+                "user": db_user,
+                "pw_error": None,
+                "pw_success": None,
+                "delete_error": "Bitte bestätigen Sie die Löschung mit der Checkbox.",
+                "delete_success": None,
+            },
+            status_code=400,
+        )
 
+    # 3) Passwort prüfen
+    if not verify_password(current_password_delete, db_user.password_hash):
+        return templates.TemplateResponse(
+            "profile.html",
+            {
+                "request": request,
+                "user": db_user,
+                "pw_error": None,
+                "pw_success": None,
+                "delete_error": "Aktuelles Passwort ist falsch.",
+                "delete_success": None,
+            },
+            status_code=400,
+        )
+
+    # 4) Benutzer wirklich löschen
     db.delete(db_user)
     db.commit()
 
-    # Nach dem Löschen zur Logout-/Login-Route
-    return RedirectResponse(url="/auth/logout-web", status_code=303)
+    # 5) Cookie invalidieren + Redirect auf Registrierung mit Erfolgsinfo
+    resp = RedirectResponse(
+        url="/auth/register-web?deleted=1",
+        status_code=303,
+    )
+    resp.delete_cookie("access_token")  # ggf. Cookie-Namen anpassen
+
+    return resp

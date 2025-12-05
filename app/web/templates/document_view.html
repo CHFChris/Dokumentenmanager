@@ -1,0 +1,179 @@
+{# app/web/templates/document_view.html #}
+{% extends "base.html" %}
+
+{% block title %}Dokument ansehen{% endblock %}
+
+{% block content %}
+<div class="container mx-auto max-w-6xl py-6 px-4">
+
+  <a href="/documents" class="text-sm text-gray-500 inline-flex items-center mb-4">
+    &larr; Zurück zur Übersicht
+  </a>
+
+  <h1 class="text-2xl font-semibold mb-1">
+    {{ doc.original_filename or doc.filename or doc.name }}
+  </h1>
+  <p class="text-sm text-gray-500 mb-6">
+    Dokument ansehen
+  </p>
+
+  {# Dateiname für einfache Endungsprüfung im Template #}
+  {% set filename = (doc.original_filename or doc.filename or doc.name or '') %}
+  {% set filename_lower = filename|lower %}
+  {% set is_pdf_view = filename_lower[-4:] == '.pdf' %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {# LEFT: Vorschau-Bereich #}
+    <div class="lg:col-span-2 rounded-2xl border bg-white shadow-sm p-4">
+      {% if is_pdf_view %}
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-gray-600">
+            PDF-Vorschau (im Browser gerendert)
+          </span>
+        </div>
+
+        {# Container, in den alle Seiten als Canvas eingefügt werden #}
+        <div id="pdf-viewer"
+             class="rounded-xl border bg-gray-50 overflow-auto"
+             style="max-height: 75vh;">
+        </div>
+
+        <p class="mt-2 text-xs text-gray-500">
+          Falls die Vorschau nicht geladen wird, kannst du die Datei
+          <a href="/documents/{{ doc.id }}/download" class="text-blue-600 underline">
+            hier herunterladen
+          </a>
+          und lokal öffnen.
+        </p>
+
+        {# pdf.js von CDN laden #}
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
+        <script>
+          document.addEventListener("DOMContentLoaded", function () {
+            if (!window["pdfjsLib"]) {
+              console.error("pdfjsLib nicht geladen");
+              const viewer = document.getElementById("pdf-viewer");
+              if (viewer) {
+                viewer.innerHTML =
+                  '<p class="text-sm text-red-600 p-3">Fehler beim Laden der PDF-Bibliothek.</p>';
+              }
+              return;
+            }
+
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+              "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+
+            const url = "/documents/{{ doc.id }}/download?inline=true";
+            const viewer = document.getElementById("pdf-viewer");
+
+            const loadingTask = pdfjsLib.getDocument(url);
+            loadingTask.promise
+              .then(function (pdf) {
+                // Alle Seiten nacheinander rendern
+                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                  pdf.getPage(pageNum).then(function (page) {
+                    const viewport = page.getViewport({ scale: 1.2 });
+
+                    const canvas = document.createElement("canvas");
+                    canvas.className = "block mx-auto mb-4 bg-white shadow-sm";
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    viewer.appendChild(canvas);
+
+                    const ctx = canvas.getContext("2d");
+                    const renderContext = {
+                      canvasContext: ctx,
+                      viewport: viewport
+                    };
+                    page.render(renderContext);
+                  });
+                }
+              })
+              .catch(function (err) {
+                console.error("PDF render error", err);
+                if (viewer) {
+                  viewer.innerHTML =
+                    '<p class="text-sm text-red-600 p-3">Fehler beim Laden der PDF-Vorschau.</p>';
+                }
+              });
+          });
+        </script>
+
+      {% else %}
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-gray-600">
+            Textvorschau (Layout kann vom Original abweichen)
+          </span>
+        </div>
+
+        {% if ocr_text %}
+          <div class="rounded-xl border bg-gray-50 p-3 overflow-y-auto" style="max-height: 75vh;">
+            <pre class="text-xs leading-relaxed font-mono whitespace-pre-wrap">
+{{ ocr_text }}
+            </pre>
+          </div>
+        {% else %}
+          <div class="rounded-xl border border-dashed bg-gray-50 p-4 text-sm text-gray-500">
+            Für dieses Dokument liegt noch kein OCR-Text vor.
+            Du kannst das Original herunterladen und lokal öffnen.
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {# RIGHT: Details + Download #}
+    <div class="rounded-2xl border bg-white shadow-sm p-4 space-y-4">
+      <div>
+        <h2 class="text-base font-semibold mb-2">Dokumentdetails</h2>
+        <dl class="text-sm text-gray-600 space-y-1">
+          <div class="flex justify-between">
+            <dt class="text-gray-500">Dateiname</dt>
+            <dd class="font-medium text-right truncate max-w-[180px]">
+              {{ filename }}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-500">Typ</dt>
+            <dd class="text-right">
+              {% if is_pdf_view %}
+                PDF
+              {% else %}
+                {{ doc.mime_type or doc.content_type or "unbekannt" }}
+              {% endif %}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-500">Hochgeladen am</dt>
+            <dd class="text-right">
+              {{ doc.created_at.strftime("%d.%m.%Y %H:%M") if doc.created_at else "-" }}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-500">Kategorie</dt>
+            <dd class="text-right">
+              {% if doc.category %}
+                {{ doc.category.name }}
+              {% else %}
+                -
+              {% endif %}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="space-y-2">
+        <a href="/documents/{{ doc.id }}/download"
+           class="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+          Herunterladen
+        </a>
+        <a href="/documents"
+           class="inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Zurück zur Übersicht
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

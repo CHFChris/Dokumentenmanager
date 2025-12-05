@@ -8,7 +8,6 @@ from starlette.requests import Request
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
-from app.web.templates import templates
 from app.repositories.category_repo import (
     list_categories_for_user,
     create_category_for_user,
@@ -18,8 +17,9 @@ from app.models.category import Category
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
+
 # -------------------------------------------------
-# Web-Views (HTML) – NUR diese bleiben in dieser Datei
+# Redirect auf neue Oberfläche /category-keywords
 # -------------------------------------------------
 @router.get("/")
 def list_categories_view(
@@ -27,17 +27,12 @@ def list_categories_view(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    categories = list_categories_for_user(db, user.id)
-    return templates.TemplateResponse(
-        "categories.html",
-        {
-            "request": request,
-            "user": user,
-            "categories": categories,
-        },
-    )
+    return RedirectResponse(url="/category-keywords", status_code=303)
 
 
+# -------------------------------------------------
+# Kategorie anlegen -> danach auf /category-keywords
+# -------------------------------------------------
 @router.post("/create-web")
 def create_category_view(
     name: str = Form(...),
@@ -50,9 +45,12 @@ def create_category_view(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return RedirectResponse(url="/categories", status_code=303)
+    return RedirectResponse(url="/category-keywords", status_code=303)
 
 
+# -------------------------------------------------
+# Kategorie löschen -> ebenfalls /category-keywords
+# -------------------------------------------------
 @router.post("/{category_id}/delete-web")
 def delete_category_view(
     category_id: int,
@@ -63,4 +61,4 @@ def delete_category_view(
     if not ok:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    return RedirectResponse(url="/categories", status_code=303)
+    return RedirectResponse(url="/documents", status_code=303)
