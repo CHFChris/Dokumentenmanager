@@ -18,6 +18,7 @@ import os
 import mimetypes
 
 try:
+    # Für DOCX-Text-Extraktion
     from docx import Document as DocxDocument
 except ImportError:
     DocxDocument = None
@@ -46,18 +47,46 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 # -------------------------------------------------------------
 def extract_docx_text_from_bytes(data: bytes) -> str:
     """
-    Extrahiert einfachen Fließtext aus einer DOCX-Datei.
-    Layout ist vereinfacht, aber lesbar.
+    Extrahiert Text aus einer DOCX-Datei:
+    - normale Absätze
+    - Tabellenzellen (typisch für Rechnungs- / Formularvorlagen)
+
+    Layout geht verloren, aber der reine Text wird lesbar dargestellt.
     """
     if DocxDocument is None:
+        # python-docx nicht installiert
+        print("[DOCX_DEBUG] DocxDocument is None (python-docx fehlt?)")
         return ""
-    docx_file = DocxDocument(BytesIO(data))
+
+    try:
+        docx_file = DocxDocument(BytesIO(data))
+    except Exception as e:
+        print(f"[DOCX_DEBUG] Fehler beim Öffnen der DOCX-Datei: {e!r}")
+        return ""
+
     parts: list[str] = []
+
+    # 1) Normale Absätze
     for p in docx_file.paragraphs:
         text = p.text.strip()
         if text:
             parts.append(text)
-    return "\n\n".join(parts)
+
+    # 2) Tabellen (wichtig für Rechnungs-/Formularvorlagen)
+    for table in docx_file.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    text = p.text.strip()
+                    if text:
+                        parts.append(text)
+
+    full_text = "\n\n".join(parts)
+    print(
+        f"[DOCX_DEBUG] extrahierte Blöcke: {len(parts)}, "
+        f"Zeichen insgesamt: {len(full_text)}"
+    )
+    return full_text
 
 
 # -------------------------------------------------------------
@@ -70,6 +99,10 @@ def detail(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
+    """
+    Zeigt Metadaten und Versionsliste eines Dokuments.
+    Nutzt das Template document_detail.html.
+    """
     doc = get_document_owned(db, doc_id, user.id)
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
@@ -102,15 +135,17 @@ def document_view_page(
 
     - PDFs:
         werden über /documents/{id}/download?inline=1 im Browser angezeigt
-    - Nicht-PDFs:
-        * wenn OCR-Text vorhanden: entschlüsseln und anzeigen
-        * sonst: bei DOCX/TXT einfachen Text aus Datei extrahieren
+    - DOCX/TXT:
+        Text wird aus Datei extrahiert (falls kein OCR-Text vorhanden)
+    - andere:
+        ggf. OCR-Text anzeigen
     """
+    # Nur Dokumente des eingeloggten Users
     doc = get_document_owned(db, doc_id, user.id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Datei laden (für Text-/DOCX-Vorschau und PDF-Header-Check)
+    # Datei laden (für Text-/DOCX-Vorschau und ggf. PDF-Header-Check)
     file_bytes: bytes | None = None
     storage_path = getattr(doc, "storage_path", None)
     if storage_path and os.path.exists(storage_path):
@@ -121,7 +156,7 @@ def document_view_page(
         except Exception:
             file_bytes = None
 
-    # Dateiname für Anzeige
+    # Dateiname für Anzeige / Typ-Erkennung
     raw_name = (
         getattr(doc, "original_filename", None)
         or getattr(doc, "filename", None)
@@ -130,27 +165,35 @@ def document_view_page(
     ).strip()
     name_lower = raw_name.lower()
 
-    # MIME-Typ robust bestimmen
+    # MIME-Typ robust bestimmen (DB → Dateiname → Fallback)
     mime_from_db = getattr(doc, "mime_type", None)
     mime_from_name, _ = mimetypes.guess_type(raw_name)
     mime_raw = mime_from_db or mime_from_name or "application/octet-stream"
+    # charset etc. abschneiden, alles kleinschreiben
     mime_norm = mime_raw.split(";")[0].strip().lower()
 
+    # ---------------------------------------------------------
     # PDF-Erkennung:
-    # 1) MIME "application/pdf" (ohne/mit Charset etc.)
+    # 1) MIME "application/pdf"
     # 2) Dateiendung .pdf
     # 3) Magic-Header %PDF-
-    is_pdf_view = False
+    # ---------------------------------------------------------
+    is_pdf = False
 
     if mime_norm == "application/pdf" or name_lower.endswith(".pdf"):
-        is_pdf_view = True
+        is_pdf = True
 
-    if (not is_pdf_view) and file_bytes:
+    if (not is_pdf) and file_bytes:
         head = file_bytes.lstrip()[:5]
         if head.startswith(b"%PDF-") or head.startswith(b"%pdf-"):
-            is_pdf_view = True
+            is_pdf = True
 
+    # DOCX-Erkennung (nur wenn es kein PDF ist)
+    is_docx = (not is_pdf) and name_lower.endswith(".docx")
+
+    # ---------------------------------------------------------
     # Klartext / OCR-Text
+    # ---------------------------------------------------------
     ocr_text: str | None = None
 
     # 1) OCR-Text aus der DB entschlüsseln (falls vorhanden)
@@ -161,32 +204,39 @@ def document_view_page(
             ocr_text = "[Fehler beim Entschlüsseln des OCR-Texts]"
 
     # 2) Falls kein OCR-Text, aber Datei vorhanden und kein PDF → Text aus Datei
-    if (not is_pdf_view) and (not ocr_text) and file_bytes:
+    if (not is_pdf) and (not ocr_text) and file_bytes:
         try:
             if name_lower.endswith(".docx"):
+                # Word-Dokument: Text inkl. Tabellen
                 text = extract_docx_text_from_bytes(file_bytes)
                 if text:
                     ocr_text = text
             elif name_lower.endswith(".txt"):
+                # Einfache Textdatei
                 text = file_bytes.decode("utf-8", errors="replace")
                 if text.strip():
                     ocr_text = text
         except Exception:
+            # Bei Fehlern einfach keinen Text anzeigen
             pass
 
+    # Debug-Ausgabe in der Konsole (hilfreich zum Prüfen)
     print(
         f"[VIEW_DEBUG] id={doc.id}, name={raw_name!r}, mime_raw={mime_raw!r}, "
-        f"mime_norm={mime_norm!r}, is_pdf_view={is_pdf_view}, "
+        f"mime_norm={mime_norm!r}, is_pdf={is_pdf}, is_docx={is_docx}, "
         f"has_file_bytes={file_bytes is not None}, has_ocr={ocr_text is not None}"
     )
 
+    # Template bekommt Informationen, ob PDF oder DOCX,
+    # plus optionalen Klartext (OCR oder extrahierter Text)
     return templates.TemplateResponse(
         "document_view.html",
         {
             "request": request,
             "user": user,
             "doc": doc,
-            "is_pdf_view": is_pdf_view,
+            "is_pdf": is_pdf,
+            "is_docx": is_docx,
             "ocr_text": ocr_text,
         },
     )
@@ -258,6 +308,9 @@ def rename(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
+    """
+    Benennt ein Dokument um und legt dabei eine neue Version an.
+    """
     try:
         rename_document_creates_version(db, user.id, doc_id, new_title.strip())
         return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
@@ -273,6 +326,9 @@ def upload_version(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
+    """
+    Lädt eine neue Version zu einem bestehenden Dokument hoch.
+    """
     try:
         upload_new_version(db, user.id, doc_id, file.filename, file.file, note=note)
         return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
@@ -287,6 +343,9 @@ def restore(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
+    """
+    Stellt eine ältere Version eines Dokuments wieder her.
+    """
     try:
         restore_version(db, user.id, doc_id, version_id)
         return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
@@ -303,6 +362,9 @@ def similar_documents(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
+    """
+    Einfache Ähnlichkeitssuche auf Basis des entschlüsselten OCR-Textes.
+    """
     docs = (
         db.query(Document)
         .filter(

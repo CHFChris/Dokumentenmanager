@@ -17,10 +17,11 @@
     Dokument ansehen
   </p>
 
-  {# Dateiname für einfache Endungsprüfung im Template #}
+  {# Dateiname und Endungen im Template auswerten #}
   {% set filename = (doc.original_filename or doc.filename or doc.name or '') %}
   {% set filename_lower = filename|lower %}
-  {% set is_pdf_view = filename_lower[-4:] == '.pdf' %}
+  {% set is_pdf_view = filename_lower.endswith('.pdf') %}
+  {% set is_docx = filename_lower.endswith('.docx') %}
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     {# LEFT: Vorschau-Bereich #}
@@ -70,7 +71,6 @@
             const loadingTask = pdfjsLib.getDocument(url);
             loadingTask.promise
               .then(function (pdf) {
-                // Alle Seiten nacheinander rendern
                 for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
                   pdf.getPage(pageNum).then(function (page) {
                     const viewport = page.getViewport({ scale: 1.2 });
@@ -101,6 +101,33 @@
           });
         </script>
 
+      {% elif is_docx %}
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-gray-600">
+            Word-Dokument (Textvorschau, Layout kann abweichen)
+          </span>
+        </div>
+
+        {% if ocr_text %}
+          <div class="rounded-xl border bg-gray-50 p-4 overflow-y-auto" style="max-height: 75vh;">
+            <div class="text-sm leading-relaxed whitespace-pre-wrap bg-white px-4 py-3 rounded-lg shadow-inner">
+              {{ ocr_text }}
+            </div>
+          </div>
+        {% else %}
+          <div class="rounded-xl border border-dashed bg-gray-50 p-4 text-sm text-gray-500">
+            Für dieses Word-Dokument konnte kein Text extrahiert werden.
+            Du kannst das Original herunterladen und in Word öffnen.
+          </div>
+        {% endif %}
+
+        <p class="mt-2 text-xs text-gray-500">
+          Originaldatei:
+          <a href="/documents/{{ doc.id }}/download" class="text-blue-600 underline">
+            als DOCX herunterladen
+          </a>
+        </p>
+
       {% else %}
         <div class="flex items-center justify-between mb-3">
           <span class="text-sm text-gray-600">
@@ -110,13 +137,13 @@
 
         {% if ocr_text %}
           <div class="rounded-xl border bg-gray-50 p-3 overflow-y-auto" style="max-height: 75vh;">
-            <pre class="text-xs leading-relaxed font-mono whitespace-pre-wrap">
+            <pre class="text-xs leading-relaxed whitespace-pre-wrap">
 {{ ocr_text }}
             </pre>
           </div>
         {% else %}
           <div class="rounded-xl border border-dashed bg-gray-50 p-4 text-sm text-gray-500">
-            Für dieses Dokument liegt noch kein OCR-Text vor.
+            Für dieses Dokument liegt noch kein Text vor.
             Du kannst das Original herunterladen und lokal öffnen.
           </div>
         {% endif %}
@@ -139,6 +166,8 @@
             <dd class="text-right">
               {% if is_pdf_view %}
                 PDF
+              {% elif is_docx %}
+                Word (DOCX)
               {% else %}
                 {{ doc.mime_type or doc.content_type or "unbekannt" }}
               {% endif %}
