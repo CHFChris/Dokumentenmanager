@@ -1,117 +1,117 @@
-{% extends "base.html" %}
-{% block title %}Search · SPKH{% endblock %}
+  {% extends "base.html" %}
+  {% block title %}Search · SPKH{% endblock %}
 
-{% block content %}
-<h2>Search Documents</h2>
-<p class="muted" style="margin-top:-4px;margin-bottom:18px;">Find documents by content, title, or keywords</p>
+  {% block content %}
+  <h2>Search Documents</h2>
+  <p class="muted" style="margin-top:-4px;margin-bottom:18px;">Find documents by content, title, or keywords</p>
 
-<div class="card">
-  <div class="card-body">
-    <form class="searchbar" method="get" action="/search">
-      <input class="input" type="text" name="q" value="{{ q or '' }}" placeholder="Search your documents...">
-      <button class="btn primary">Search</button>
-    </form>
-  </div>
-</div>
-
-{# Start-Ansicht #}
-{% if q is not defined or (q|string)=='' %}
-  <div class="empty" style="margin-top:16px">
-    <div style="font-size:48px">🔎</div>
-    <div>Start searching</div>
-    <div class="muted">Enter keywords to find documents in your knowledge hub</div>
-  </div>
-{% else %}
-  <div class="card" style="margin-top:16px">
+  <div class="card">
     <div class="card-body">
-      {# Normiere results auf eine Liste results_list #}
-      {% set results_list =
-        results.items if results is mapping and results.items is defined
-        else (results.items if results is not mapping and results.items is defined
-        else results)
-      %}
-
-      {% if results_list and results_list|length > 0 %}
-        <table role="grid">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Snippet / Info</th>
-              <th style="width:120px">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in results_list %}
-              {% set ext = (r.name.rsplit('.',1)[-1]).upper() if '.' in r.name else 'FILE' %}
-              <tr>
-                <td>
-                  <a href="/documents/{{ r.id }}">{{ r.name }}</a><br>
-                  <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">{{ ext }}</span>
-                </td>
-
-                <td class="muted">
-                  {# Bevorzugt Snippet anzeigen, sonst technische Infos #}
-                  {% if r.snippet %}
-                    {{ r.snippet }}
-                  {% else %}
-                    <div class="row" style="gap:8px;flex-wrap:wrap">
-                      <span>
-                        {% if r.size is not none %}
-                          {% if r.size >= 1024*1024 %}
-                            {{ (r.size/1024/1024)|round(2) }} MB
-                          {% elif r.size >= 1024 %}
-                            {{ (r.size/1024)|round(0) }} KB
-                          {% else %}
-                            {{ r.size }} B
-                          {% endif %}
-                        {% else %}-{% endif %}
-                      </span>
-                      {% if r.sha256 %}
-                        <span class="muted">·</span>
-                        <code class="text-xs">{{ r.sha256[:12] }}…</code>
-                      {% endif %}
-                      {% if r.created_at %}
-                        <span class="muted">·</span>
-                        <span>{{ r.created_at.strftime('%Y-%m-%d') }}</span>
-                      {% endif %}
-                    </div>
-                  {% endif %}
-                </td>
-
-                <td>
-                  <div class="row">
-                    <a class="btn" href="/documents/{{ r.id }}">Open</a>
-                    <a class="btn" href="/documents/{{ r.id }}/download">⬇</a>
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-
-        {# Pagination (optional, nur wenn vorhanden) #}
-        {% if results is defined and (results.has_prev is defined or results.has_next is defined) %}
-          <div class="row" style="margin-top:12px">
-            <div class="muted">
-              {% if results.page is defined and results.pages is defined %}
-                Page {{ results.page }} of {{ results.pages }}
-              {% endif %}
-            </div>
-            <div class="right row">
-              {% if results.has_prev %}
-                <a class="btn" href="?q={{ q|urlencode }}&page={{ results.prev_num }}">← Prev</a>
-              {% endif %}
-              {% if results.has_next %}
-                <a class="btn" href="?q={{ q|urlencode }}&page={{ results.next_num }}">Next →</a>
-              {% endif %}
-            </div>
-          </div>
-        {% endif %}
-
-      {% else %}
-        <div class="empty">No results for “<span class="font-medium">{{ q }}</span>”.</div>
-      {% endif %}
+      <form class="searchbar" method="get" action="/search">
+        <input class="input" type="text" name="q" value="{{ q or '' }}" placeholder="Search your documents...">
+        <button class="btn primary">Search</button>
+      </form>
     </div>
   </div>
-{% endif %}
-{% endblock %}
+
+  {# Start-Ansicht #}
+  {% if q is not defined or (q|string)=='' %}
+    <div class="empty" style="margin-top:16px">
+      <div style="font-size:48px">🔎</div>
+      <div>Start searching</div>
+      <div class="muted">Enter keywords to find documents in your knowledge hub</div>
+    </div>
+  {% else %}
+    <div class="card" style="margin-top:16px">
+      <div class="card-body">
+        {# Normiere results auf eine Liste results_list #}
+        {% set results_list =
+          results.items if results is mapping and results.items is defined
+          else (results.items if results is not mapping and results.items is defined
+          else results)
+        %}
+
+        {% if results_list and results_list|length > 0 %}
+          <table role="grid">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Snippet / Info</th>
+                <th style="width:120px">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in results_list %}
+                {% set ext = (r.name.rsplit('.',1)[-1]).upper() if '.' in r.name else 'FILE' %}
+                <tr>
+                  <td>
+                    <a href="/documents/{{ r.id }}">{{ r.name }}</a><br>
+                    <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">{{ ext }}</span>
+                  </td>
+
+                  <td class="muted">
+                    {# Bevorzugt Snippet anzeigen, sonst technische Infos #}
+                    {% if r.snippet %}
+                      {{ r.snippet }}
+                    {% else %}
+                      <div class="row" style="gap:8px;flex-wrap:wrap">
+                        <span>
+                          {% if r.size is not none %}
+                            {% if r.size >= 1024*1024 %}
+                              {{ (r.size/1024/1024)|round(2) }} MB
+                            {% elif r.size >= 1024 %}
+                              {{ (r.size/1024)|round(0) }} KB
+                            {% else %}
+                              {{ r.size }} B
+                            {% endif %}
+                          {% else %}-{% endif %}
+                        </span>
+                        {% if r.sha256 %}
+                          <span class="muted">·</span>
+                          <code class="text-xs">{{ r.sha256[:12] }}…</code>
+                        {% endif %}
+                        {% if r.created_at %}
+                          <span class="muted">·</span>
+                          <span>{{ r.created_at.strftime('%Y-%m-%d') }}</span>
+                        {% endif %}
+                      </div>
+                    {% endif %}
+                  </td>
+
+                  <td>
+                    <div class="row">
+                      <a class="btn" href="/documents/{{ r.id }}">Open</a>
+                      <a class="btn" href="/documents/{{ r.id }}/download">⬇</a>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          {# Pagination (optional, nur wenn vorhanden) #}
+          {% if results is defined and (results.has_prev is defined or results.has_next is defined) %}
+            <div class="row" style="margin-top:12px">
+              <div class="muted">
+                {% if results.page is defined and results.pages is defined %}
+                  Page {{ results.page }} of {{ results.pages }}
+                {% endif %}
+              </div>
+              <div class="right row">
+                {% if results.has_prev %}
+                  <a class="btn" href="?q={{ q|urlencode }}&page={{ results.prev_num }}">← Prev</a>
+                {% endif %}
+                {% if results.has_next %}
+                  <a class="btn" href="?q={{ q|urlencode }}&page={{ results.next_num }}">Next →</a>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
+
+        {% else %}
+          <div class="empty">No results for “<span class="font-medium">{{ q }}</span>”.</div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+  {% endblock %}

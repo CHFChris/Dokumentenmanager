@@ -4,208 +4,297 @@
 {% block title %}Profil{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto mt-8 space-y-6">
-  <h1 class="text-2xl font-semibold mb-4">Profil verwalten</h1>
+<div class="min-h-[70vh] px-4 py-8">
+  <div class="max-w-3xl mx-auto space-y-6">
 
-  <!-- Basisdaten -->
-  <section class="border rounded-lg p-4 bg-white shadow-sm">
-    <h2 class="text-lg font-semibold mb-3">Allgemeine Einstellungen</h2>
-    <form method="post" action="/profile/update-basic" class="space-y-3">
+    <!-- Page header -->
+    <div class="flex items-center justify-between gap-2 mb-2">
       <div>
-        <label class="block text-sm font-medium mb-1">Name</label>
-        <input
-          type="text"
-          name="name"
-          value="{{ user.display_name or '' }}"
-          class="w-full border rounded px-3 py-2"
-          required
-        >
-      </div>
-      <div>
-        <label class="block text-sm font-medium mb-1">Sprache</label>
-        <select
-          name="language"
-          class="w-full border rounded px-3 py-2"
-        >
-          <option value="de" {% if user.language == 'de' %}selected{% endif %}>Deutsch</option>
-          <option value="en" {% if user.language == 'en' %}selected{% endif %}>Englisch</option>
-        </select>
-      </div>
-      <div class="pt-2">
-        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-          Änderungen speichern
-        </button>
-      </div>
-    </form>
-  </section>
-
-  <!-- Passwort ändern -->
-  <section class="border rounded-lg p-4 bg-white shadow-sm">
-    <h2 class="text-lg font-semibold mb-3">Sicherheit / Passwort</h2>
-
-    {# Messagebox bei Fehler #}
-    {% if pw_error %}
-      <div class="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 shadow-sm">
-        {{ pw_error }}
-      </div>
-    {% endif %}
-
-    {# Messagebox bei Erfolg #}
-    {% if pw_success %}
-      <div class="mb-4 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 shadow-sm">
-        {{ pw_success }}
-      </div>
-    {% endif %}
-
-    <form method="post" action="/profile/change-password" class="space-y-3">
-      <div>
-        <label class="block text-sm font-medium mb-1" for="current_password">
-          Aktuelles Passwort
-        </label>
-        <input
-          id="current_password"
-          name="current_password"
-          type="password"
-          class="w-full border rounded px-3 py-2"
-          required
-        />
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label class="block text-sm font-medium mb-1" for="new_password">
-            Neues Passwort
-          </label>
-          <input
-            id="new_password"
-            name="new_password"
-            type="password"
-            class="w-full border rounded px-3 py-2"
-            required
-          />
+        <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)] mb-1">
+          Kontoeinstellungen
         </div>
+        <h1 class="text-2xl font-semibold text-[var(--ink)]">
+          Profil verwalten
+        </h1>
+      </div>
+    </div>
+
+    <!-- Allgemeine Einstellungen -->
+    <section class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm px-5 py-5 sm:px-6">
+      <div class="flex items-center justify-between gap-2 mb-4">
         <div>
-          <label class="block text-sm font-medium mb-1" for="new_password_repeat">
-            Neues Passwort (Wiederholung)
-          </label>
-          <input
-            id="new_password_repeat"
-            name="new_password_repeat"
-            type="password"
-            class="w-full border rounded px-3 py-2"
-            required
-          />
+          <h2 class="text-base sm:text-lg font-semibold text-[var(--ink)]">
+            Allgemeine Einstellungen
+          </h2>
+          <p class="mt-1 text-xs text-[var(--ink-muted)]">
+            Anzeigename und Sprache für deinen Dokumentenmanager.
+          </p>
         </div>
       </div>
 
-      <p class="text-xs text-gray-500">
-        Hinweis: Zum Ändern wird dein aktuelles Passwort benötigt. Neues Passwort mindestens 8 Zeichen,
-        inkl. Zahl und Sonderzeichen (wie bei der Registrierung empfohlen).
+      <form method="post" action="/profile/update-basic" class="space-y-4">
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-[var(--ink)]">
+            Name
+          </label>
+          <input
+            type="text"
+            name="name"
+            value="{{ user.display_name or '' }}"
+            required
+            class="w-full rounded-lg border border-slate-200 bg-[var(--bg)]/80 px-3 py-2 text-sm text-[var(--ink)]
+                   focus:outline-none focus:ring-2 focus:ring-slate-900/70 focus:border-slate-900/70"
+          >
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-[var(--ink)]">
+            Sprache
+          </label>
+          <select
+            name="language"
+            class="w-full rounded-lg border border-slate-200 bg-[var(--bg)]/80 px-3 py-2 text-sm text-[var(--ink)]
+                   focus:outline-none focus:ring-2 focus:ring-slate-900/70 focus:border-slate-900/70"
+          >
+            <option value="de" {% if user.language == 'de' %}selected{% endif %}>Deutsch</option>
+            <option value="en" {% if user.language == 'en' %}selected{% endif %}>Englisch</option>
+          </select>
+        </div>
+
+        <div class="pt-1.5">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm
+                   hover:bg-slate-800"
+          >
+            Änderungen speichern
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Passwort ändern -->
+    <section class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm px-5 py-5 sm:px-6">
+      <div class="flex items-center justify-between gap-2 mb-4">
+        <div>
+          <h2 class="text-base sm:text-lg font-semibold text-[var(--ink)]">
+            Sicherheit / Passwort
+          </h2>
+          <p class="mt-1 text-xs text-[var(--ink-muted)]">
+            Aktuelles Passwort bestätigen und sicher ein neues setzen.
+          </p>
+        </div>
+      </div>
+
+      {% if pw_error %}
+        <div class="mb-4 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800 shadow-sm">
+          {{ pw_error }}
+        </div>
+      {% endif %}
+
+      {% if pw_success %}
+        <div class="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800 shadow-sm">
+          {{ pw_success }}
+        </div>
+      {% endif %}
+
+      <form method="post" action="/profile/change-password" class="space-y-4">
+        <div class="space-y-1.5">
+          <label for="current_password" class="block text-xs font-medium text-[var(--ink)]">
+            Aktuelles Passwort
+          </label>
+          <input
+            id="current_password"
+            name="current_password"
+            type="password"
+            required
+            class="w-full rounded-lg border border-slate-200 bg-[var(--bg)]/80 px-3 py-2 text-sm text-[var(--ink)]
+                   focus:outline-none focus:ring-2 focus:ring-slate-900/70 focus:border-slate-900/70"
+          />
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <label for="new_password" class="block text-xs font-medium text-[var(--ink)]">
+              Neues Passwort
+            </label>
+            <input
+              id="new_password"
+              name="new_password"
+              type="password"
+              required
+              class="w-full rounded-lg border border-slate-200 bg-[var(--bg)]/80 px-3 py-2 text-sm text-[var(--ink)]
+                     focus:outline-none focus:ring-2 focus:ring-slate-900/70 focus:border-slate-900/70"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <label for="new_password_repeat" class="block text-xs font-medium text-[var(--ink)]">
+              Neues Passwort (Wiederholung)
+            </label>
+            <input
+              id="new_password_repeat"
+              name="new_password_repeat"
+              type="password"
+              required
+              class="w-full rounded-lg border border-slate-200 bg-[var(--bg)]/80 px-3 py-2 text-sm text-[var(--ink)]
+                     focus:outline-none focus:ring-2 focus:ring-slate-900/70 focus:border-slate-900/70"
+            />
+          </div>
+        </div>
+
+        <p class="text-[11px] text-[var(--ink-muted)]">
+          Zum Ändern wird dein aktuelles Passwort benötigt. Neues Passwort mindestens 8 Zeichen,
+          inklusive Zahl und Sonderzeichen (wie bei der Registrierung empfohlen).
+        </p>
+
+        <div class="pt-1.5">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm
+                   hover:bg-slate-800"
+          >
+            Passwort ändern
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- E-Mail ändern -->
+    <section class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm px-5 py-5 sm:px-6">
+      <div class="flex items-center justify-between gap-2 mb-4">
+        <div>
+          <h2 class="text-base sm:text-lg font-semibold text-[var(--ink)]">
+            E-Mail-Adresse ändern
+          </h2>
+          <p class="mt-1 text-xs text-[var(--ink-muted)]">
+            Kontaktadresse für Login und Sicherheitsbenachrichtigungen.
+          </p>
+        </div>
+      </div>
+
+      <form method="post" action="/profile/change-email" class="space-y-4">
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-[var(--ink)]">
+            Aktuelle E-Mail
+          </label>
+          <input
+            type="email"
+            value="{{ user.email }}"
+            disabled
+            class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-[var(--ink-muted)] cursor-not-allowed"
+          >
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-[var(--ink)]">
+            Neue E-Mail
+          </label>
+          <input
+            type="email"
+            name="new_email"
+            required
+            class="w-full rounded-lg border border-slate-200 bg-[var(--bg)]/80 px-3 py-2 text-sm text-[var(--ink)]
+                   focus:outline-none focus:ring-2 focus:ring-slate-900/70 focus:border-slate-900/70"
+          >
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-[var(--ink)]">
+            Aktuelles Passwort
+          </label>
+          <input
+            type="password"
+            name="current_password"
+            required
+            class="w-full rounded-lg border border-slate-200 bg-[var(--bg)]/80 px-3 py-2 text-sm text-[var(--ink)]
+                   focus:outline-none focus:ring-2 focus:ring-slate-900/70 focus:border-slate-900/70"
+          >
+        </div>
+
+        <div class="pt-1.5">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm
+                   hover:bg-slate-800"
+          >
+            E-Mail ändern
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Konto löschen -->
+    <section class="rounded-2xl border border-rose-200 bg-rose-50/90 px-5 py-5 sm:px-6">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <h2 class="text-base sm:text-lg font-semibold text-rose-800">
+            Konto löschen
+          </h2>
+          <p class="mt-1 text-xs text-rose-700">
+            Dieser Schritt entfernt dein Konto und alle gespeicherten Dokumente dauerhaft.
+          </p>
+        </div>
+      </div>
+
+      {% if delete_error %}
+        <div class="mb-3 rounded-xl border border-rose-400 bg-rose-100 px-3.5 py-2.5 text-xs text-rose-900 shadow-sm">
+          {{ delete_error }}
+        </div>
+      {% endif %}
+
+      {% if delete_success %}
+        <div class="mb-3 rounded-xl border border-emerald-400 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-900 shadow-sm">
+          {{ delete_success }}
+        </div>
+      {% endif %}
+
+      <p class="text-xs text-rose-700 mb-3">
+        Achtung: Diese Aktion kann nicht rückgängig gemacht werden. Alle Dokumente, Kategorien und Einstellungen
+        werden unwiederbringlich entfernt.
       </p>
 
-      <div class="pt-2">
-        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-          Passwort ändern
-        </button>
-      </div>
-    </form>
-  </section>
+      <form method="post" action="/profile/delete-account" class="space-y-4">
+        <div class="space-y-1.5">
+          <label for="current_password_delete" class="block text-xs font-medium text-rose-900">
+            Aktuelles Passwort
+          </label>
+          <input
+            id="current_password_delete"
+            name="current_password_delete"
+            type="password"
+            required
+            class="w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm text-rose-900
+                   focus:outline-none focus:ring-2 focus:ring-rose-500/80 focus:border-rose-500/80"
+          />
+        </div>
 
-  <!-- E-Mail ändern -->
-  <section class="border rounded-lg p-4 bg-white shadow-sm">
-    <h2 class="text-lg font-semibold mb-3">E-Mail-Adresse ändern</h2>
-    <form method="post" action="/profile/change-email" class="space-y-3">
-      <div>
-        <label class="block text-sm font-medium mb-1">Aktuelle E-Mail</label>
-        <input
-          type="email"
-          value="{{ user.email }}"
-          class="w-full border rounded px-3 py-2 bg-gray-100"
-          disabled
-        >
-      </div>
-      <div>
-        <label class="block text-sm font-medium mb-1">Neue E-Mail</label>
-        <input
-          type="email"
-          name="new_email"
-          class="w-full border rounded px-3 py-2"
-          required
-        >
-      </div>
-      <div>
-        <label class="block text-sm font-medium mb-1">Aktuelles Passwort</label>
-        <input
-          type="password"
-          name="current_password"
-          class="w-full border rounded px-3 py-2"
-          required
-        >
-      </div>
-      <div class="pt-2">
-        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-          E-Mail ändern
-        </button>
-      </div>
-    </form>
-  </section>
+        <div class="flex items-start gap-2">
+          <input
+            id="confirm_delete"
+            name="confirm_delete"
+            type="checkbox"
+            value="true"
+            required
+            class="mt-[2px] h-4 w-4 rounded border-rose-300 text-rose-600 focus:ring-rose-500"
+          />
+          <label for="confirm_delete" class="text-xs text-rose-900 leading-snug">
+            Ja, ich möchte mein Konto endgültig löschen und habe verstanden, dass dieser Vorgang nicht
+            rückgängig gemacht werden kann.
+          </label>
+        </div>
 
-  <!-- Konto löschen -->
-  <section class="border rounded-lg p-4 bg-red-50 border-red-200">
-    <h2 class="text-lg font-semibold mb-3 text-red-700">Konto löschen</h2>
-    <p class="text-sm text-red-700 mb-3">
-      Achtung: Diese Aktion kann nicht rückgängig gemacht werden. Alle Ihre Dokumente und Einstellungen werden entfernt.
-    </p>
+        <div class="pt-1.5">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm
+                   hover:bg-rose-700"
+          >
+            Konto endgültig löschen
+          </button>
+        </div>
+      </form>
+    </section>
 
-    {% if delete_error %}
-      <div class="mb-3 rounded-md border border-red-400 bg-red-100 px-3 py-2 text-sm text-red-900 shadow-sm">
-        {{ delete_error }}
-      </div>
-    {% endif %}
-
-    {% if delete_success %}
-      <div class="mb-3 rounded-md border border-emerald-400 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 shadow-sm">
-        {{ delete_success }}
-      </div>
-    {% endif %}
-
-    <form method="post" action="/profile/delete-account" class="space-y-3">
-      <div>
-        <label class="block text-sm font-medium mb-1" for="current_password_delete">
-          Aktuelles Passwort
-        </label>
-        <input
-          id="current_password_delete"
-          name="current_password_delete"
-          type="password"
-          class="w-full border rounded px-3 py-2"
-          required
-        />
-      </div>
-
-      <div class="flex items-center gap-2">
-        <input
-          id="confirm_delete"
-          name="confirm_delete"
-          type="checkbox"
-          value="true"
-          class="h-4 w-4 rounded border-gray-300"
-          required
-        />
-        <label for="confirm_delete" class="text-sm text-red-800">
-          Ja, ich möchte mein Konto endgültig löschen.
-        </label>
-      </div>
-
-      <div class="pt-2">
-        <button
-          type="submit"
-          class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-        >
-          Konto endgültig löschen
-        </button>
-      </div>
-    </form>
-  </section>
+  </div>
 </div>
 {% endblock %}

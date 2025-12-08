@@ -1,54 +1,167 @@
 {% extends "base.html" %}
 
+{% block title %}Sicherheitskriterien & Datenschutz{% endblock %}
+
 {% block content %}
+<div class="container mx-auto max-w-4xl py-8 px-4">
 
-<div class="card" style="max-width: 900px; margin: auto; padding: 32px;">
-    <h1 class="text-xl font-semibold mb-4">Sicherheitskriterien & Datenschutz</h1>
-
-    <p class="text-sm text-gray-600 mb-6">
+  <div class="rounded-2xl border bg-white dark:bg-gray-900 shadow-sm px-6 py-6 lg:px-8 lg:py-8">
+    <div class="mb-6">
+      <h1 class="text-2xl font-semibold tracking-tight mb-2">
+        Sicherheitskriterien & Datenschutz
+      </h1>
+      <p class="text-sm text-gray-600 dark:text-gray-300 max-w-2xl">
         Diese Seite beschreibt die technischen und organisatorischen Maßnahmen der Anwendung.
-        Sie dient als Informationsquelle für Nutzer und entspricht der geforderten Dokumentation
+        Sie dient als Informationsquelle für Nutzer und als zusammenfassende Dokumentation
         für Lehrkräfte.
-    </p>
+      </p>
+    </div>
 
-    <h2 class="text-lg font-semibold mt-6 mb-2">Passwortsicherheit</h2>
-    <ul class="text-sm text-gray-700 leading-relaxed">
-        <li>Mindestens 8 Zeichen</li>
-        <li>Mindestens 1 Zahl</li>
-        <li>Mindestens 1 Sonderzeichen (!?*$ etc.)</li>
-        <li>Password-Hashing mit bcrypt</li>
-        <li>Keine Speicherung von Klartext-Passwörtern</li>
-    </ul>
+    <!-- Passwortsicherheit -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          1
+        </span>
+        Passwortsicherheit
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>Passwort-Policy bei Registrierung und Reset:</li>
+        <li class="pl-4">• Mindestens 8 Zeichen</li>
+        <li class="pl-4">• Mindestens 1 Zahl</li>
+        <li class="pl-4">• Mindestens 1 Sonderzeichen (z.B. !?*$)</li>
+        <li>Passwörter werden ausschließlich gehasht gespeichert (bcrypt).</li>
+        <li>Keine Speicherung von Klartext-Passwörtern in der Datenbank oder in Logs.</li>
+        <li>Passwortänderung nur mit Eingabe des aktuellen Passworts.</li>
+      </ul>
+    </section>
 
-    <h2 class="text-lg font-semibold mt-6 mb-2">Zugriffskontrolle</h2>
-    <ul class="text-sm text-gray-700 leading-relaxed">
-        <li>Jeder Nutzer sieht ausschließlich seine eigenen Dokumente</li>
-        <li>Token-basierte Authentifizierung (JWT)</li>
-        <li>Session-Handling für Webanmeldung</li>
-    </ul>
+    <!-- Konto & Authentifizierung -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          2
+        </span>
+        Konto & Authentifizierung
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>E-Mail-Verifizierung beim Anlegen neuer Konten (Bestätigungslink).</li>
+        <li>Token-basierter Passwort-Reset mit zeitlich begrenztem Link (1 Stunde gültig).</li>
+        <li>Token-basierte Authentifizierung (JWT) für API-Zugriffe.</li>
+        <li>Session-basierte Web-Anmeldung für das Dashboard.</li>
+        <li>Anmeldung über E-Mail oder Benutzername, jeweils eindeutig pro Konto.</li>
+        <li>Konto-Löschung mit Passwortbestätigung und expliziter Einwilligung im Profilbereich.</li>
+      </ul>
+    </section>
 
-    <h2 class="text-lg font-semibold mt-6 mb-2">Dokumenten-Sicherheit</h2>
-    <ul class="text-sm text-gray-700 leading-relaxed">
-        <li>Separates Datei-Verzeichnis pro Nutzer (Isolation)</li>
-        <li>Dateiversionierung zur Nachvollziehbarkeit</li>
-        <li>Keine öffentlichen URLs, alle Downloads über Auth</li>
-    </ul>
+    <!-- Zugriffskontrolle -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          3
+        </span>
+        Zugriffskontrolle
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>Jeder Nutzer sieht ausschließlich seine eigenen Dokumente.</li>
+        <li>Filter auf Datenbankebene nach Benutzer-ID bei allen Dokument-Abfragen.</li>
+        <li>Alle Dokument-Downloads und Vorschauen sind an eine erfolgreiche Authentifizierung gebunden.</li>
+        <li>Keine öffentlichen Direkt-Links zu Dateien; Auslieferung immer über geschützte Endpunkte.</li>
+      </ul>
+    </section>
 
-    <h2 class="text-lg font-semibold mt-6 mb-2">Datenschutz</h2>
-    <ul class="text-sm text-gray-700 leading-relaxed">
-        <li>Daten werden ausschließlich lokal verarbeitet</li>
-        <li>Keine Übertragung an externe Services</li>
-        <li>Minimale Datenspeicherung (Name, E-Mail, Dokumente)</li>
-        <li>Logische Trennung der Benutzerkonten</li>
-    </ul>
+    <!-- Dokumentensicherheit & Verschlüsselung -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          4
+        </span>
+        Dokumentensicherheit & Verschlüsselung
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>Separates Datei-Verzeichnis pro Nutzer (Isolation auf Dateisystemebene).</li>
+        <li>Verschlüsselte Ablage der hochgeladenen Dokumente (symmetrische Verschlüsselung, Entschlüsselung nur zur Laufzeit über die Anwendung).</li>
+        <li>Hashing aller Dateien mit SHA256 zur Integritätsprüfung.</li>
+        <li>Bereinigung von Dateinamen, um Pfadmanipulationen zu verhindern.</li>
+        <li>Datei-Versionierung:
+          <span class="block pl-4">
+            • neue Versionen erhalten eigene Speicherpfade<br>
+            • Übersicht über alle Versionen mit Zeitstempel und Größe<br>
+            • Wiederherstellung einer älteren Version über die Versionsverwaltung
+          </span>
+        </li>
+      </ul>
+    </section>
 
-    <h2 class="text-lg font-semibold mt-6 mb-2">Technische Maßnahmen</h2>
-    <ul class="text-sm text-gray-700 leading-relaxed">
-        <li>Hashing aller Dateien (SHA256) zur Integritätsprüfung</li>
-        <li>Bereinigung von Dateinamen (Pfadschutz)</li>
-        <li>Validierung aller Uploads</li>
-        <li>Atomare Dateioperationen (Rename, Delete, Version)</li>
-    </ul>
+    <!-- OCR & Volltextsuche -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          5
+        </span>
+        OCR-Verarbeitung & Volltextsuche
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>OCR-Text wird lokal erzeugt und in der Datenbank verschlüsselt gespeichert.</li>
+        <li>Volltextsuche kombiniert Dateiname und entschlüsselten OCR-Inhalt.</li>
+        <li>Suchanfragen sind immer an den angemeldeten Benutzer gebunden (kein Cross-User-Zugriff).</li>
+        <li>Schlagwörter für Kategorien können aus OCR-Texten vorgeschlagen werden (Auto-Tagging), die Übernahme entscheidet der Nutzer selbst.</li>
+      </ul>
+    </section>
+
+    <!-- Datenschutz & Datensparsamkeit -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          6
+        </span>
+        Datenschutz & Datensparsamkeit
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>Datenverarbeitung findet ausschließlich lokal im System der Schule bzw. im Demo-Setup statt.</li>
+        <li>Keine automatische Übermittlung von Dokumenten oder Inhalten an externe Cloud-Services.</li>
+        <li>Speicherung nur der notwendigen Stammdaten:
+          <span class="block pl-4">
+            • Name / Anzeigename<br>
+            • E-Mail-Adresse<br>
+            • Zugangsdaten (gehasht)<br>
+            • Benutzer-Dokumente inkl. Kategorien, Versionen und OCR-Text
+          </span>
+        </li>
+        <li>Logische Trennung der Benutzerkonten in der Datenbank (jede Operation mit Benutzer-ID verknüpft).</li>
+      </ul>
+    </section>
+
+    <!-- Protokollierung & Fehlerbehandlung -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          7
+        </span>
+        Protokollierung & Fehlerbehandlung
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>Technische Logs (z.B. Server-Requests, Fehler) enthalten keine Dokumentinhalte.</li>
+        <li>Fehlermeldungen im Frontend sind bewusst allgemein gehalten und zeigen keine sensiblen Details.</li>
+        <li>Uploads werden validiert (Größe, MIME-Typ, Dateiname), um Fehlbedienung und typische Angriffsvektoren zu reduzieren.</li>
+      </ul>
+    </section>
+
+    <!-- Nutzerkontrolle & Transparenz -->
+    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
+          8
+        </span>
+        Nutzerkontrolle & Transparenz
+      </h2>
+      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
+        <li>Profilseite mit Anpassung von Name, Sprache, E-Mail-Adresse und Passwort.</li>
+        <li>Konto kann durch den Nutzer selbst inklusive aller Dokumente endgültig gelöscht werden.</li>
+        <li>Farbschema und Design-Einstellungen werden ausschließlich lokal im Browser des Nutzers gespeichert (Local Storage, keine Übertragung zum Server).</li>
+      </ul>
+    </section>
+
+  </div>
 </div>
-
 {% endblock %}

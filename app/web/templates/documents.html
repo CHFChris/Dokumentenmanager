@@ -1,81 +1,159 @@
+{# app/web/templates/documents.html #}
 {% extends "base.html" %}
-{% block title %}Documents · SPKH{% endblock %}
+{% block title %}Dokumente · Dokumentenmanager{% endblock %}
 
 {% block content %}
-<h2>Document Library</h2>
-<p class="muted" style="margin-top:-4px;margin-bottom:18px;">
-  Manage your uploaded documents
-</p>
+<div class="container mx-auto max-w-6xl py-6 px-4">
 
-<div class="card" style="margin-bottom:20px;">
-  <div class="card-body">
-
-    {# --------------------------------------------- #}
-    {# Filterleiste: Suche + Kategorie-Filter        #}
-    {# --------------------------------------------- #}
-    <form method="get" action="/documents" class="row" style="gap:10px; margin-bottom:16px;">
-      <input
-        class="input"
-        type="text"
-        name="q"
-        value="{{ q }}"
-        placeholder="Suche nach Dateiname..."
-        style="flex:2"
-      >
-
-      <select class="input" name="category_id" style="flex:1; min-width:220px;">
-        <option value="">Alle Kategorien</option>
-        {% if categories %}
-          {% for cat in categories %}
-            <option value="{{ cat.id }}"
-              {% if selected_category_id and selected_category_id == (cat.id | string) %}selected{% endif %}>
-              {{ cat.name }}
-            </option>
-          {% endfor %}
-        {% endif %}
-      </select>
-
-      <button class="btn" type="submit" style="flex:0 0 130px;">
-        Filtern
-      </button>
-    </form>
-
-    {# --------------------------------------------- #}
-    {# Button: Schlagwörter anpassen                 #}
-    {# --------------------------------------------- #}
-    <div class="flex justify-end mb-4">
-      <a href="/category-keywords"
-         class="inline-flex items-center px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium
-                text-gray-700 bg-white hover:bg-gray-50 shadow-sm">
-        Schlagwörter anpassen
-      </a>
+  {# ------------------------------------------------- #}
+  {# Header                                           #}
+  {# ------------------------------------------------- #}
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Deine Dokumente</h1>
+      <p class="text-sm text-gray-500 mt-1">
+        Suche, filtere und verwalte deine hochgeladenen Dateien.
+      </p>
     </div>
 
-    {# --------------------------------------------- #}
-    {# Kategorie-Management                          #}
-    {# --------------------------------------------- #}
-    <div class="card" style="border:none; box-shadow:none; padding:0; background:transparent;">
-      <div class="card-body" style="padding:0;">
-        <header style="font-weight:600; margin-bottom:10px;">Kategorien verwalten</header>
+    <a href="/category-keywords"
+       class="inline-flex items-center px-4 py-2 rounded-xl border border-gray-300 text-sm font-medium
+              text-gray-700 bg-white hover:bg-gray-50 shadow-sm">
+      Schlagwörter anpassen
+    </a>
+  </div>
 
-        {# Neue Kategorie anlegen #}
-        <form method="post" action="/categories/create-web" class="row" style="gap:10px; margin-bottom:10px;">
+  {# ------------------------------------------------- #}
+  {# Filterleiste                                     #}
+  {# ------------------------------------------------- #}
+  <div class="rounded-2xl border bg-white shadow-sm mb-8">
+    <div class="p-4 sm:p-5 border-b border-gray-100">
+      <h2 class="text-sm font-medium text-gray-800">Filter & Suche</h2>
+      <p class="text-xs text-gray-500 mt-1">
+        Kombiniere Suche, Kategorien, Dateitypen und Zeitraum, um schnell die richtigen Dokumente zu finden.
+      </p>
+    </div>
+
+    <div class="p-4 sm:p-5">
+      <form method="get" action="/documents" class="flex flex-wrap items-end gap-3">
+
+        {# Suche #}
+        <div class="flex-1 min-w-[220px]">
+          <label class="block text-xs text-gray-600 mb-1">
+            Suche nach Dateiname oder Inhalt
+          </label>
           <input
-            class="input"
+            class="input w-full"
+            type="text"
+            name="q"
+            value="{{ q }}"
+            placeholder="z.B. Versicherung, Rechnung, Vertrag..."
+          >
+        </div>
+
+        {# Kategorie #}
+        <div class="w-full sm:w-auto sm:flex-1 min-w-[180px]">
+          <label class="block text-xs text-gray-600 mb-1">Kategorie</label>
+          <select class="input w-full" name="category_id">
+            <option value="">Alle Kategorien</option>
+            {% if categories %}
+              {% for cat in categories %}
+                <option value="{{ cat.id }}"
+                  {% if selected_category_id and selected_category_id == (cat.id | string) %}selected{% endif %}>
+                  {{ cat.name }}
+                </option>
+              {% endfor %}
+            {% endif %}
+          </select>
+        </div>
+
+        {# Dateityp #}
+        <div class="w-full sm:w-auto sm:flex-1 min-w-[150px]">
+          <label class="block text-xs text-gray-600 mb-1">Dateityp</label>
+          <select class="input w-full" name="filetype">
+            {% set ft = filetype or "" %}
+            <option value="" {% if ft == "" %}selected{% endif %}>Alle Typen</option>
+            <option value="pdf" {% if ft == "pdf" %}selected{% endif %}>PDF</option>
+            <option value="docx" {% if ft == "docx" %}selected{% endif %}>Word (DOCX)</option>
+            <option value="image" {% if ft == "image" %}selected{% endif %}>Bilder (PNG/JPG)</option>
+            <option value="other" {% if ft == "other" %}selected{% endif %}>Sonstige</option>
+          </select>
+        </div>
+
+        {# Datum von #}
+        <div class="w-full sm:w-auto">
+          <label class="block text-xs text-gray-600 mb-1">Von</label>
+          <input
+            class="input w-full"
+            type="date"
+            name="date_from"
+            value="{{ date_from or '' }}"
+          >
+        </div>
+
+        {# Datum bis #}
+        <div class="w-full sm:w-auto">
+          <label class="block text-xs text-gray-600 mb-1">Bis</label>
+          <input
+            class="input w-full"
+            type="date"
+            name="date_to"
+            value="{{ date_to or '' }}"
+          >
+        </div>
+
+        {# Button #}
+        <div class="w-full sm:w-auto">
+          <button
+            class="btn w-full sm:w-auto mt-2 sm:mt-0"
+            type="submit"
+          >
+            Filtern
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ------------------------------------------------- #}
+  {# Kategorien verwalten                             #}
+  {# ------------------------------------------------- #}
+  <section class="rounded-2xl border bg-white shadow-sm mb-8">
+    <div class="p-4 sm:p-5 border-b border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-900">Kategorien verwalten</h2>
+      <p class="text-xs text-gray-500 mt-1">
+        Erstelle, benenne um oder lösche Kategorien. Diese werden für Filter und automatische Zuordnung verwendet.
+      </p>
+    </div>
+
+    <div class="p-4 sm:p-5 space-y-6">
+
+      {# Neue Kategorie #}
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+          Neue Kategorie hinzufügen
+        </h3>
+        <form method="post" action="/categories/create-web" class="flex flex-wrap gap-3">
+          <input
+            class="input flex-1 min-w-[220px]"
             type="text"
             name="name"
-            placeholder="Neue Kategorie hinzufügen"
+            placeholder="z.B. Rechnungen, Versicherung, Verträge..."
             required
-            style="flex:2; max-width:260px;"
           >
-          <button class="btn" type="submit" style="flex:0 0 150px;">
+          <button class="btn" type="submit">
             Kategorie anlegen
           </button>
         </form>
+      </div>
 
-        {# Kategorie umbenennen #}
-        <form method="post" action="/categories/rename-web" class="row" style="gap:10px; margin-bottom:10px;">
-          <select class="input" name="category_id" required style="min-width:220px;">
+      {# Kategorie umbenennen #}
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+          Kategorie umbenennen
+        </h3>
+        <form method="post" action="/categories/rename-web" class="flex flex-wrap gap-3">
+          <select class="input min-w-[220px]" name="category_id" required>
             <option value="">Kategorie auswählen...</option>
             {% for cat in categories %}
               <option value="{{ cat.id }}">{{ cat.name }}</option>
@@ -83,111 +161,218 @@
           </select>
 
           <input
-            class="input"
+            class="input flex-1 min-w-[200px]"
             type="text"
             name="new_name"
             required
             placeholder="Neuer Kategoriename"
-            style="flex:1;"
           >
 
-          <button class="btn" type="submit" style="flex:0 0 130px;">
+          <button class="btn" type="submit">
             Umbenennen
           </button>
         </form>
+      </div>
 
-        {# Kategorie löschen #}
-        <form method="post" action="/categories/delete-web" class="row" style="gap:10px;">
-          <select class="input" name="category_id" required style="min-width:220px;">
+      {# Kategorie löschen #}
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+          Kategorie löschen
+        </h3>
+        <form method="post" action="/categories/delete-web" class="flex flex-wrap gap-3 items-center">
+          <select class="input min-w-[220px]" name="category_id" required>
             <option value="">Kategorie auswählen...</option>
             {% for cat in categories %}
               <option value="{{ cat.id }}">{{ cat.name }}</option>
             {% endfor %}
           </select>
 
-          <button class="btn danger" type="submit" style="flex:0 0 150px;">
+          <button class="btn danger" type="submit">
             Kategorie löschen
           </button>
         </form>
       </div>
+
+    </div>
+  </section>
+
+  {# ------------------------------------------------- #}
+  {# Dokumente + Bulk-Zuweisung                       #}
+  {# ------------------------------------------------- #}
+  <section class="rounded-2xl border bg-white shadow-sm">
+    <div class="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div>
+        <h2 class="text-sm font-semibold text-gray-900">Dokumente</h2>
+        <p class="text-xs text-gray-500 mt-1">
+          Wähle Dokumente über die Checkboxen aus, um sie gemeinsam einer Kategorie zuzuweisen.
+        </p>
+      </div>
+      <div class="text-xs text-gray-500">
+        {{ docs|length if docs else 0 }} Dokument(e) gefunden
+      </div>
     </div>
 
-  </div>
+    <div class="p-3 sm:p-4">
+      {% if docs and docs|length > 0 %}
+        <form method="post" action="/documents/bulk-assign-category" class="space-y-3">
+          {# Bulk-Aktionsleiste #}
+          <div class="flex flex-wrap items-center gap-3 mb-2">
+            <div class="flex items-center gap-2">
+              <label class="text-xs text-gray-600">Ausgewählte Dokumente zuweisen an</label>
+              <select
+                name="category_id"
+                class="input min-w-[180px]"
+                required
+              >
+                <option value="" disabled selected>Kategorie wählen...</option>
+                {% for cat in categories %}
+                  <option value="{{ cat.id }}">{{ cat.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              class="btn"
+            >
+              Zuweisen
+            </button>
+
+            <span class="text-[11px] text-gray-400">
+              Tipp: Oben filtern, dann hier mehrere Dokumente auf einmal verschieben.
+            </span>
+          </div>
+
+          {# Tabelle #}
+          <div class="overflow-x-auto rounded-xl border border-gray-100">
+            <table role="grid" class="min-w-full text-sm">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">
+                    <input
+                      type="checkbox"
+                      id="select-all-docs"
+                      class="h-4 w-4 rounded border-gray-300"
+                    >
+                  </th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Titel</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Typ</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Kategorie</th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Größe</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Datum</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Aktionen</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                {% for d in docs %}
+                  {% set ext = (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' %}
+                  <tr class="hover:bg-gray-50/70">
+                    <td class="px-3 py-2 align-middle">
+                      <input
+                        type="checkbox"
+                        name="doc_ids"
+                        value="{{ d.id }}"
+                        class="h-4 w-4 rounded border-gray-300 doc-checkbox"
+                      >
+                    </td>
+                    <td class="px-3 py-2 align-middle">
+                      <a href="/documents/{{ d.id }}" class="text-sm font-medium text-gray-900 hover:underline">
+                        {{ d.name }}
+                      </a>
+                    </td>
+                    <td class="px-3 py-2 align-middle">
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium
+                                   {% if ext=='PDF' %}
+                                     bg-red-50 text-red-700
+                                   {% elif ext in ['TXT','MD'] %}
+                                     bg-green-50 text-green-700
+                                   {% elif ext in ['DOC','DOCX'] %}
+                                     bg-indigo-50 text-indigo-700
+                                   {% else %}
+                                     bg-gray-50 text-gray-700
+                                   {% endif %}">
+                        {{ ext }}
+                      </span>
+                    </td>
+                    <td class="px-3 py-2 align-middle text-sm text-gray-700">
+                      {% if d.category %}
+                        {{ d.category }}
+                      {% else %}
+                        <span class="text-gray-400 text-xs">Keine</span>
+                      {% endif %}
+                    </td>
+                    <td class="px-3 py-2 align-middle text-right text-sm text-gray-700">
+                      {% if d.size >= 1024*1024 %}
+                        {{ (d.size/1024/1024)|round(2) }} MB
+                      {% elif d.size >= 1024 %}
+                        {{ (d.size/1024)|round(0) }} KB
+                      {% else %}
+                        {{ d.size }} B
+                      {% endif %}
+                    </td>
+                    <td class="px-3 py-2 align-middle text-sm text-gray-500">
+                      {% if d.created_at %}
+                        {{ d.created_at.strftime('%d.%m.%Y %H:%M') }}
+                      {% else %}
+                        -
+                      {% endif %}
+                    </td>
+                    <td class="px-3 py-2 align-middle">
+                      <div class="flex flex-wrap gap-2">
+                        <a
+                          href="/documents/{{ d.id }}/view"
+                          class="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-gray-300
+                                 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+                        >
+                          Anzeigen
+                        </a>
+                        <a
+                          class="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-600 text-white
+                                 text-xs font-medium hover:bg-blue-700"
+                          href="/documents/{{ d.id }}/download"
+                        >
+                          Download
+                        </a>
+                        <form method="post" action="/files/{{ d.id }}/delete-web"
+                              onsubmit="return confirm('Dokument wirklich löschen?')">
+                          <button
+                            class="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-red-50 text-red-700
+                                   text-xs font-medium hover:bg-red-100"
+                            type="submit"
+                          >
+                            Löschen
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </form>
+      {% else %}
+        <div class="py-10 text-center text-sm text-gray-500">
+          Keine Dokumente gefunden. Lade Dateien hoch oder passe deine Filter an.
+        </div>
+      {% endif %}
+    </div>
+  </section>
 </div>
 
-{# ------------------------------------------------- #}
-{# Dokumententabelle                                 #}
-{# ------------------------------------------------- #}
-<div class="card">
-  <div class="card-body">
-    {% if docs and docs|length > 0 %}
-      <table role="grid">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Size</th>
-            <th>Date</th>
-            <th style="width:200px">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for d in docs %}
-            {% set ext = (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' %}
-            <tr>
-              <td><a href="/documents/{{ d.id }}">{{ d.name }}</a></td>
-              <td>
-                <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">
-                  {{ ext }}
-                </span>
-              </td>
-              <td>
-                {% if d.category %}
-                  {{ d.category }}
-                {% else %}
-                  -
-                {% endif %}
-              </td>
-              <td>
-                {% if d.size >= 1024*1024 %}
-                  {{ (d.size/1024/1024)|round(2) }} MB
-                {% elif d.size >= 1024 %}
-                  {{ (d.size/1024)|round(0) }} KB
-                {% else %}
-                  {{ d.size }} B
-                {% endif %}
-              </td>
-              <td class="muted">
-                {% if d.created_at %}
-                  {{ d.created_at.strftime('%Y-%m-%d') }}
-                {% else %}
-                  -
-                {% endif %}
-              </td>
-              <td class="row" style="gap:6px">
-                <a
-                  href="/documents/{{ d.id }}/view"
-                  class="btn ghost"
-                  style="font-size:13px; padding:4px 8px;"
-                >
-                  Anzeigen
-                </a>
-                <a class="btn" href="/documents/{{ d.id }}/download">Download</a>
-                <form method="post" action="/files/{{ d.id }}/delete-web"
-                      onsubmit="return confirm('Delete this file?')">
-                  <button class="btn" type="submit">Delete</button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <div class="empty">
-        <div>Keine Dokumente vorhanden.</div>
-      </div>
-    {% endif %}
-  </div>
-</div>
+{# Select-All JavaScript #}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const selectAll = document.getElementById("select-all-docs");
+    const checkboxes = document.querySelectorAll(".doc-checkbox");
+
+    if (!selectAll) return;
+
+    selectAll.addEventListener("change", function () {
+      checkboxes.forEach(cb => {
+        cb.checked = selectAll.checked;
+      });
+    });
+  });
+</script>
 {% endblock %}

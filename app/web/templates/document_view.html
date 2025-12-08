@@ -1,21 +1,30 @@
 {# app/web/templates/document_view.html #}
 {% extends "base.html" %}
 
-{% block title %}Dokument ansehen{% endblock %}
+{% block title %}Dokument ansehen · SPKH{% endblock %}
 
 {% block content %}
-<div class="container mx-auto max-w-6xl py-6 px-4">
+<div class="mx-auto max-w-6xl px-4 py-6 space-y-5">
 
-  <a href="/documents" class="text-sm text-gray-500 inline-flex items-center mb-4">
-    &larr; Zurück zur Übersicht
+  <!-- Back link -->
+  <a href="/documents"
+     class="inline-flex items-center text-xs font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]">
+    <span class="mr-1">←</span>
+    Zur Dokumentenübersicht
   </a>
 
-  <h1 class="text-2xl font-semibold mb-1">
-    {{ doc.original_filename or doc.filename or doc.name }}
-  </h1>
-  <p class="text-sm text-gray-500 mb-6">
-    Dokument ansehen
-  </p>
+  <!-- Title / Intro -->
+  <div>
+    <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)] mb-1">
+      Dokumentansicht
+    </div>
+    <h1 class="text-2xl font-semibold text-[var(--ink)] break-words">
+      {{ doc.original_filename or doc.filename or doc.name }}
+    </h1>
+    <p class="mt-1 text-sm text-[var(--ink-muted)]">
+      Vorschau, Basisdetails und Download.
+    </p>
+  </div>
 
   {# Dateiname und Endungen im Template auswerten #}
   {% set filename = (doc.original_filename or doc.filename or doc.name or '') %}
@@ -23,31 +32,36 @@
   {% set is_pdf_view = filename_lower.endswith('.pdf') %}
   {% set is_docx = filename_lower.endswith('.docx') %}
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="grid gap-5 lg:grid-cols-3">
+
     {# LEFT: Vorschau-Bereich #}
-    <div class="lg:col-span-2 rounded-2xl border bg-white shadow-sm p-4">
+    <div class="lg:col-span-2 rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm p-4 space-y-3">
+
       {% if is_pdf_view %}
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-sm text-gray-600">
-            PDF-Vorschau (im Browser gerendert)
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">
+            PDF-Vorschau
+          </span>
+          <span class="text-[11px] text-[var(--ink-muted)]">
+            Direkt im Browser gerendert
           </span>
         </div>
 
-        {# Container, in den alle Seiten als Canvas eingefügt werden #}
+        <!-- PDF Viewer Container -->
         <div id="pdf-viewer"
-             class="rounded-xl border bg-gray-50 overflow-auto"
+             class="mt-1 rounded-xl border border-slate-200/80 bg-[var(--bg)] overflow-auto"
              style="max-height: 75vh;">
         </div>
 
-        <p class="mt-2 text-xs text-gray-500">
+        <p class="mt-2 text-[11px] leading-relaxed text-[var(--ink-muted)]">
           Falls die Vorschau nicht geladen wird, kannst du die Datei
-          <a href="/documents/{{ doc.id }}/download" class="text-blue-600 underline">
+          <a href="/documents/{{ doc.id }}/download" class="text-sky-500 underline underline-offset-2">
             hier herunterladen
           </a>
           und lokal öffnen.
         </p>
 
-        {# pdf.js von CDN laden #}
+        <!-- pdf.js von CDN laden -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
         <script>
@@ -76,7 +90,7 @@
                     const viewport = page.getViewport({ scale: 1.2 });
 
                     const canvas = document.createElement("canvas");
-                    canvas.className = "block mx-auto mb-4 bg-white shadow-sm";
+                    canvas.className = "block mx-auto mb-4 bg-white shadow-sm rounded-lg";
                     canvas.width = viewport.width;
                     canvas.height = viewport.height;
 
@@ -102,68 +116,77 @@
         </script>
 
       {% elif is_docx %}
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-sm text-gray-600">
-            Word-Dokument (Textvorschau, Layout kann abweichen)
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">
+            Word-Dokument
+          </span>
+          <span class="text-[11px] text-[var(--ink-muted)]">
+            Textvorschau, Layout kann abweichen
           </span>
         </div>
 
         {% if ocr_text %}
-          <div class="rounded-xl border bg-gray-50 p-4 overflow-y-auto" style="max-height: 75vh;">
-            <div class="text-sm leading-relaxed whitespace-pre-wrap bg-white px-4 py-3 rounded-lg shadow-inner">
+          <div class="mt-1 rounded-xl border border-slate-200/80 bg-[var(--bg)] p-4 overflow-y-auto"
+               style="max-height: 75vh;">
+            <div class="rounded-lg bg-white px-4 py-3 text-sm leading-relaxed text-slate-800 shadow-inner whitespace-pre-wrap">
               {{ ocr_text }}
             </div>
           </div>
         {% else %}
-          <div class="rounded-xl border border-dashed bg-gray-50 p-4 text-sm text-gray-500">
+          <div class="mt-2 rounded-xl border border-dashed border-slate-300 bg-[var(--bg)]/80 p-4 text-sm text-[var(--ink-muted)]">
             Für dieses Word-Dokument konnte kein Text extrahiert werden.
-            Du kannst das Original herunterladen und in Word öffnen.
+            Lade die Originaldatei herunter und öffne sie in Word.
           </div>
         {% endif %}
 
-        <p class="mt-2 text-xs text-gray-500">
+        <p class="mt-2 text-[11px] text-[var(--ink-muted)]">
           Originaldatei:
-          <a href="/documents/{{ doc.id }}/download" class="text-blue-600 underline">
+          <a href="/documents/{{ doc.id }}/download" class="text-sky-500 underline underline-offset-2">
             als DOCX herunterladen
           </a>
         </p>
 
       {% else %}
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-sm text-gray-600">
-            Textvorschau (Layout kann vom Original abweichen)
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">
+            Textvorschau
+          </span>
+          <span class="text-[11px] text-[var(--ink-muted)]">
+            Darstellung kann vom Original abweichen
           </span>
         </div>
 
         {% if ocr_text %}
-          <div class="rounded-xl border bg-gray-50 p-3 overflow-y-auto" style="max-height: 75vh;">
-            <pre class="text-xs leading-relaxed whitespace-pre-wrap">
+          <div class="mt-1 rounded-xl border border-slate-200/80 bg-[var(--bg)] p-3 overflow-y-auto"
+               style="max-height: 75vh;">
+            <pre class="text-xs leading-relaxed text-[var(--ink)] whitespace-pre-wrap bg-white rounded-lg px-3 py-2 shadow-inner">
 {{ ocr_text }}
             </pre>
           </div>
         {% else %}
-          <div class="rounded-xl border border-dashed bg-gray-50 p-4 text-sm text-gray-500">
+          <div class="mt-2 rounded-xl border border-dashed border-slate-300 bg-[var(--bg)]/80 p-4 text-sm text-[var(--ink-muted)]">
             Für dieses Dokument liegt noch kein Text vor.
-            Du kannst das Original herunterladen und lokal öffnen.
+            Lade die Originaldatei herunter und öffne sie lokal.
           </div>
         {% endif %}
       {% endif %}
     </div>
 
     {# RIGHT: Details + Download #}
-    <div class="rounded-2xl border bg-white shadow-sm p-4 space-y-4">
-      <div>
-        <h2 class="text-base font-semibold mb-2">Dokumentdetails</h2>
-        <dl class="text-sm text-gray-600 space-y-1">
-          <div class="flex justify-between">
-            <dt class="text-gray-500">Dateiname</dt>
-            <dd class="font-medium text-right truncate max-w-[180px]">
+    <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm p-4 space-y-4">
+
+      <div class="space-y-3">
+        <h2 class="text-sm font-semibold text-[var(--ink)]">Dokumentdetails</h2>
+        <dl class="space-y-2 text-sm">
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-[var(--ink-muted)]">Dateiname</dt>
+            <dd class="font-medium text-[var(--ink)] text-right truncate max-w-[220px]">
               {{ filename }}
             </dd>
           </div>
-          <div class="flex justify-between">
-            <dt class="text-gray-500">Typ</dt>
-            <dd class="text-right">
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-[var(--ink-muted)]">Typ</dt>
+            <dd class="text-right text-[var(--ink)]">
               {% if is_pdf_view %}
                 PDF
               {% elif is_docx %}
@@ -173,33 +196,33 @@
               {% endif %}
             </dd>
           </div>
-          <div class="flex justify-between">
-            <dt class="text-gray-500">Hochgeladen am</dt>
-            <dd class="text-right">
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-[var(--ink-muted)]">Hochgeladen am</dt>
+            <dd class="text-right text-[var(--ink)]">
               {{ doc.created_at.strftime("%d.%m.%Y %H:%M") if doc.created_at else "-" }}
             </dd>
           </div>
-          <div class="flex justify-between">
-            <dt class="text-gray-500">Kategorie</dt>
-            <dd class="text-right">
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-[var(--ink-muted)]">Kategorie</dt>
+            <dd class="text-right text-[var(--ink)]">
               {% if doc.category %}
                 {{ doc.category.name }}
               {% else %}
-                -
+                —
               {% endif %}
             </dd>
           </div>
         </dl>
       </div>
 
-      <div class="space-y-2">
+      <div class="space-y-2 pt-2 border-t border-slate-200/80">
         <a href="/documents/{{ doc.id }}/download"
-           class="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+           class="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-800">
           Herunterladen
         </a>
         <a href="/documents"
-           class="inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-          Zurück zur Übersicht
+           class="inline-flex w-full items-center justify-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-2.5 text-xs font-semibold text-[var(--ink)] shadow-sm hover:bg-slate-200/70">
+          Zur Dokumentenübersicht
         </a>
       </div>
     </div>

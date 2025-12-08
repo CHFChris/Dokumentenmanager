@@ -1,12 +1,39 @@
-<!-- web/templates/verify_failed.html -->
 {% extends "base.html" %}
+
+{% block title %}Verifizierung fehlgeschlagen · SPKH{% endblock %}
+
 {% block content %}
-<div style="max-width:560px;margin:48px auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
-  <h1 style="margin:0 0 12px 0;font-size:24px;color:#991b1b;">Verifizierung fehlgeschlagen</h1>
-  <p>Der Link ist ungültig, abgelaufen oder bereits verwendet.</p>
-  <a href="/auth/login-web"
-     style="display:inline-block;margin-top:16px;padding:12px 18px;background:#374151;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
-    Zurück zum Login
-  </a>
+<div class="max-w-md mx-auto mt-14 px-4">
+  <div class="rounded-2xl border border-red-200/70 dark:border-red-500/40 bg-white dark:bg-slate-900/80 shadow-sm px-6 py-5">
+    <div class="flex items-start gap-3">
+      <div class="mt-1 h-8 w-8 flex items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/40">
+        !
+      </div>
+      <div>
+        <h1 class="text-lg font-semibold text-red-700 dark:text-red-300 mb-1">
+          Verifizierung fehlgeschlagen
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          Der Verifizierungslink ist ungültig, abgelaufen oder wurde bereits benutzt.
+          Du kannst dich erneut anmelden und einen neuen Link anfordern.
+        </p>
+
+        <div class="mt-4 flex gap-2">
+          <a
+            href="/auth/login-web"
+            class="inline-flex items-center justify-center rounded-xl bg-gray-900 text-white text-sm font-medium px-4 py-2.5 hover:bg-gray-800"
+          >
+            Zurück zum Login
+          </a>
+          <a
+            href="/auth/register-web"
+            class="inline-flex items-center justify-center rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium px-4 py-2.5 text-gray-700 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-slate-800"
+          >
+            Neues Konto anlegen
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

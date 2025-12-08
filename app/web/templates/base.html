@@ -28,200 +28,258 @@
 
   {% block head_extra %}{% endblock %}
 </head>
-<body class="tw-compat">
+<body class="tw-compat min-h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)]">
   {% set p = request.url.path %}
   {% set current = active if active is defined and active else (
       'dashboard' if p.startswith('/dashboard')
       else 'upload' if p.startswith('/upload')
       else 'documents' if p.startswith('/documents')
       else 'search' if p.startswith('/search')
+      else 'security-info' if p.startswith('/security-info')
       else ''
   ) %}
 
-  <header class="nav">
-    <div class="navwrap">
-      <a href="/dashboard" class="brand flex items-center gap-2">
-        <img src="{{ url_for('static', path='img/logo.png') }}"
-             alt="Logo"
-             style="height:24px;width:24px;display:block" />
-        SPKH
+  <!-- NAVBAR -->
+  <header class="sticky top-0 z-40 w-full border-b border-slate-200/60 bg-[var(--card)]/90 backdrop-blur-md">
+    <nav class="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-4 lg:px-6">
+      <!-- Brand -->
+      <a href="/dashboard"
+         class="flex items-center gap-2 rounded-full px-2 py-1 text-sm font-semibold text-[var(--ink)] shadow-sm ring-1 ring-slate-200/70 bg-[var(--bg)]/80">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-tr from-sky-500 to-indigo-500 text-xs font-bold text-white shadow-sm">
+          DM
+        </span>
+        <span class="hidden sm:inline">SPKH Dokumentenmanager</span>
+        <span class="inline sm:hidden">SPKH</span>
       </a>
 
-      <div class="spacer"></div>
-
       {% if user %}
-        <nav class="navlinks" style="gap: 6px;">
-          <a href="/dashboard" class="navlink {{ 'active' if current=='dashboard' else '' }}">Dashboard</a>
-          <a href="/upload" class="navlink {{ 'active' if current=='upload' else '' }}">Upload</a>
-          <a href="/documents" class="navlink {{ 'active' if current=='documents' else '' }}">Documents</a>
-          <a href="/security-info"
-             class="{% if active == 'security-info' %}navlink active{% else %}navlink{% endif %}">
-            Security-info
+        <!-- Hauptnavigation -->
+        <div class="hidden items-center gap-1 rounded-full px-1 py-0.5 text-xs font-medium shadow-sm ring-1 ring-slate-200/70 bg-[var(--bg)]/70 sm:flex">
+          <a href="/dashboard"
+             class="px-3 py-1.5 rounded-full transition
+                    {% if current=='dashboard' %}
+                      bg-slate-900 text-white
+                    {% else %}
+                      text-slate-700 hover:bg-slate-200/80
+                    {% endif %}">
+            Dashboard
           </a>
+          <a href="/upload"
+             class="px-3 py-1.5 rounded-full transition
+                    {% if current=='upload' %}
+                      bg-slate-900 text-white
+                    {% else %}
+                      text-slate-700 hover:bg-slate-200/80
+                    {% endif %}">
+            Upload
+          </a>
+          <a href="/documents"
+             class="px-3 py-1.5 rounded-full transition
+                    {% if current=='documents' %}
+                      bg-slate-900 text-white
+                    {% else %}
+                      text-slate-700 hover:bg-slate-200/80
+                    {% endif %}">
+            Documents
+          </a>
+          </a>
+          <a href="/security-info"
+             class="px-3 py-1.5 rounded-full transition
+                    {% if current=='security-info' %}
+                      bg-slate-900 text-white
+                    {% else %}
+                      text-slate-700 hover:bg-slate-200/80
+                    {% endif %}">
+            Security
+          </a>
+        </div>
+      {% endif %}
 
-          <button id="theme-toggle"
-                  class="btn ghost"
-                  aria-pressed="false"
-                  title="Theme wechseln">
+      <!-- Right side -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        {% if user %}
+          <!-- Theme toggle -->
+          <button
+            id="theme-toggle"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-[var(--bg)] text-xs shadow-sm transition hover:bg-slate-200/70"
+            aria-pressed="false"
+            title="Theme wechseln">
             🌙
           </button>
 
-          <form method="post" action="/auth/logout-web">
-            <button class="btn" style="padding: 6px 12px;">Logout</button>
-          </form>
-
-          <!-- Zahnrad -->
-          <button id="settings-toggle"
-                  type="button"
-                  class="btn ghost"
-                  aria-label="Einstellungen"
-                  style="padding: 6px 10px; border-radius: 999px; font-size: 14px;">
+          <!-- Settings -->
+          <button
+            id="settings-toggle"
+            type="button"
+            aria-label="Einstellungen"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-[var(--bg)] text-xs shadow-sm transition hover:bg-slate-200/70">
             ⚙
           </button>
-        </nav>
-      {% else %}
-        <nav class="navlinks">
-          <a class="link" href="/auth/login-web">Login</a>
-          <a class="link" href="/auth/register-web">Registrieren</a>
-        </nav>
-      {% endif %}
-    </div>
+
+          <!-- User + Logout -->
+          <div class="flex items-center gap-2">
+            <span class="hidden text-xs text-[var(--ink-muted)] sm:inline">
+              {{ user.username or user.email }}
+            </span>
+            <form method="post" action="/auth/logout-web">
+              <button
+                class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-3 py-1 text-xs font-medium text-[var(--ink)] shadow-sm transition hover:bg-slate-200/70">
+                Logout
+              </button>
+            </form>
+          </div>
+        {% else %}
+          <div class="flex items-center gap-2 text-xs">
+            <a
+              href="/auth/login-web"
+              class="rounded-full border border-slate-300 bg-[var(--bg)] px-3 py-1 font-medium text-[var(--ink)] shadow-sm transition hover:bg-slate-200/70">
+              Login
+            </a>
+            <a
+              href="/auth/register-web"
+              class="rounded-full bg-slate-900 px-3 py-1 font-medium text-white shadow-sm transition hover:bg-slate-800">
+              Registrieren
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </nav>
   </header>
 
-  <main class="container">
+  <!-- MAIN -->
+  <main class="mx-auto mt-4 flex w-full max-w-7xl flex-1 flex-col px-3 pb-10 sm:px-4 lg:px-6">
     {% if error %}
-      <div class="alert error">{{ error }}</div>
+      <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+        {{ error }}
+      </div>
     {% endif %}
     {% block content %}{% endblock %}
   </main>
 
   <!-- SETTINGS PANEL -->
-  <div id="settings-panel"
-       style="
-         position: fixed;
-         top: 64px;
-         right: 16px;
-         width: 320px;
-         z-index: 60;
-         display: none;
-       ">
-    <div class="card" style="box-shadow: var(--shadow-md); padding: 16px 18px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-        <div style="font-weight:600; font-size:14px;">Einstellungen</div>
-        <button type="button"
-                id="settings-close"
-                class="btn ghost"
-                style="padding:2px 6px; font-size:12px;">
+  <div
+    id="settings-panel"
+    class="fixed right-3 top-16 z-50 hidden w-80 max-w-full"
+  >
+    <div class="card rounded-2xl border border-slate-300 bg-[var(--card)]/95 p-4 shadow-xl">
+      <div class="mb-2 flex items-center justify-between">
+        <div class="text-sm font-semibold text-[var(--ink)]">Einstellungen</div>
+        <button
+          type="button"
+          id="settings-close"
+          class="btn ghost inline-flex items-center rounded-full px-2 py-0.5 text-xs"
+        >
           ✕
         </button>
       </div>
 
-      <!-- Ansicht 1: Menü mit Optionen -->
+      <!-- Menü -->
       <div id="settings-view-menu">
-        <div style="font-size:12px; color:var(--ink-muted); margin-bottom:10px;">
+        <div class="mb-3 text-xs text-[var(--ink-muted)]">
           Wähle einen Bereich, den du anpassen möchtest.
         </div>
-        <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
-          <button type="button"
-                  class="btn"
-                  style="justify-content:flex-start; font-size:13px;"
-                  data-settings-open="design">
+        <div class="flex flex-col gap-2 text-xs">
+          <button
+            type="button"
+            class="btn inline-flex justify-start rounded-lg border border-slate-300 bg-[var(--bg)] px-3 py-2 text-xs font-medium text-[var(--ink)] shadow-sm hover:bg-slate-200/70"
+            data-settings-open="design"
+          >
             Hintergrund- und Schriftfarbe ändern
           </button>
-          <button type="button"
-                  class="btn ghost"
-                  style="justify-content:flex-start; font-size:13px;"
-                  data-settings-open="account">
+          <button
+            type="button"
+            class="btn ghost inline-flex justify-start rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-[var(--ink-muted)] hover:bg-slate-200/40"
+            data-settings-open="account"
+          >
             Account
           </button>
         </div>
       </div>
 
-      <!-- Ansicht 2: Design-Box (Farben) -->
-      <div id="settings-view-design" style="display:none;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-          <div style="font-weight:600; font-size:13px;">Design anpassen</div>
-          <button type="button"
-                  class="btn ghost"
-                  id="settings-back-from-design"
-                  style="padding:2px 6px; font-size:11px;">
+      <!-- Design -->
+      <div id="settings-view-design" class="hidden">
+        <div class="mb-2 flex items-center justify-between">
+          <div class="text-xs font-semibold text-[var(--ink)]">Design anpassen</div>
+          <button
+            type="button"
+            class="btn ghost rounded-full px-2 py-0.5 text-[11px]"
+            id="settings-back-from-design"
+          >
             ← Zurück
           </button>
         </div>
 
-        <div style="font-size:12px; color:var(--ink-muted); margin-bottom:10px;">
-          Farben für Hintergrund, Boxen und Schrift anpassen.
+        <div class="mb-3 text-xs text-[var(--ink-muted)]">
+          Farben für Hintergrund, Karten und Schrift anpassen.
         </div>
 
-        <div style="display:flex; flex-direction:column; gap:10px; font-size:13px;">
-          <label style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="flex flex-col gap-2 text-xs">
+          <label class="flex items-center justify-between gap-3">
             <span>Hintergrund</span>
-            <input type="color" id="color-bg"
-                   style="width:42px; height:24px; border:none; background:transparent;" />
+            <input type="color" id="color-bg" class="h-6 w-10 cursor-pointer rounded border border-slate-300 bg-transparent" />
           </label>
 
-          <label style="display:flex; justify-content:space-between; align-items:center;">
+          <label class="flex items-center justify-between gap-3">
             <span>Boxen / Karten</span>
-            <input type="color" id="color-card"
-                   style="width:42px; height:24px; border:none; background:transparent;" />
+            <input type="color" id="color-card" class="h-6 w-10 cursor-pointer rounded border border-slate-300 bg-transparent" />
           </label>
 
-          <label style="display:flex; justify-content:space-between; align-items:center;">
+          <label class="flex items-center justify-between gap-3">
             <span>Schrift</span>
-            <input type="color" id="color-ink"
-                   style="width:42px; height:24px; border:none; background:transparent;" />
+            <input type="color" id="color-ink" class="h-6 w-10 cursor-pointer rounded border border-slate-300 bg-transparent" />
           </label>
 
-          <label style="display:flex; justify-content:space-between; align-items:center;">
+          <label class="flex items-center justify-between gap-3">
             <span>Primärfarbe</span>
-            <input type="color" id="color-primary"
-                   style="width:42px; height:24px; border:none; background:transparent;" />
+            <input type="color" id="color-primary" class="h-6 w-10 cursor-pointer rounded border border-slate-300 bg-transparent" />
           </label>
 
-          <label style="display:flex; justify-content:space-between; align-items:center;">
+          <label class="flex items-center justify-between gap-3">
             <span>Akzent</span>
-            <input type="color" id="color-accent"
-                   style="width:42px; height:24px; border:none; background:transparent;" />
+            <input type="color" id="color-accent" class="h-6 w-10 cursor-pointer rounded border border-slate-300 bg-transparent" />
           </label>
         </div>
 
-        <div style="display:flex; justify-content:space-between; gap:8px; margin-top:14px;">
-          <button type="button"
-                  id="settings-reset"
-                  class="btn"
-                  style="flex:1; font-size:12px;">
+        <div class="mt-4 flex gap-2">
+          <button
+            type="button"
+            id="settings-reset"
+            class="btn flex-1 rounded-lg border border-slate-300 bg-[var(--bg)] px-2 py-1.5 text-xs font-medium text-[var(--ink)] hover:bg-slate-200/70"
+          >
             Zurücksetzen
           </button>
-          <button type="button"
-                  id="settings-apply"
-                  class="btn primary"
-                  style="flex:1; font-size:12px;">
+          <button
+            type="button"
+            id="settings-apply"
+            class="btn primary flex-1 rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+          >
             Anwenden
           </button>
         </div>
 
-        <div style="margin-top:8px; font-size:11px; color:var(--ink-muted);">
+        <div class="mt-2 text-[11px] text-[var(--ink-muted)]">
           Auswahl wird lokal im Browser gespeichert.
         </div>
       </div>
 
-      <!-- Ansicht 3: Account (Profil-Einstellungen) -->
-      <div id="settings-view-account" style="display:none;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-          <div style="font-weight:600; font-size:13px;">Account</div>
-          <button type="button"
-                  class="btn ghost"
-                  id="settings-back-from-account"
-                  style="padding:2px 6px; font-size:11px;">
+      <!-- Account -->
+      <div id="settings-view-account" class="hidden">
+        <div class="mb-2 flex items-center justify-between">
+          <div class="text-xs font-semibold text-[var(--ink)]">Account</div>
+          <button
+            type="button"
+            class="btn ghost rounded-full px-2 py-0.5 text-[11px]"
+            id="settings-back-from-account"
+          >
             ← Zurück
           </button>
         </div>
 
-        <div style="font-size:12px; color:var(--ink-muted); margin-bottom:10px;">
+        <div class="mb-3 text-xs text-[var(--ink-muted)]">
           Verwalte deine Profildaten und Sicherheitseinstellungen.
         </div>
 
-        <ul style="font-size:12px; color:var(--ink-muted); margin-bottom:12px; padding-left:18px;">
+        <ul class="mb-3 ml-4 list-disc text-[11px] text-[var(--ink-muted)]">
           <li>Name / Anzeigename ändern</li>
           <li>E-Mail-Adresse aktualisieren</li>
           <li>Sprache des Kontos anpassen</li>
@@ -229,20 +287,21 @@
           <li>Konto bei Bedarf dauerhaft löschen</li>
         </ul>
 
-        <a href="/profile"
-           class="btn primary"
-           style="width:100%; justify-content:center; font-size:13px; margin-bottom:6px;">
+        <a
+          href="/profile"
+          class="btn primary mb-2 inline-flex w-full justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+        >
           Profil-Einstellungen öffnen
         </a>
 
-        <div style="font-size:11px; color:var(--ink-muted);">
+        <div class="text-[11px] text-[var(--ink-muted)]">
           Hinweis: Änderungen an E-Mail und Passwort erfordern dein aktuelles Passwort.
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Theme Toggle -->
+  <!-- Theme Toggle Logic -->
   <script>
     (function(){
       const btn = document.getElementById('theme-toggle');
@@ -263,7 +322,7 @@
     })();
   </script>
 
-  <!-- Settings-Logik (Panel + Design-Farben) -->
+  <!-- Settings-Panel / Custom Theme -->
   <script>
     (function () {
       const root = document.documentElement;

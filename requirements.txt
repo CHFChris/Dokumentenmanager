@@ -1,11 +1,39 @@
+# --- Web / API ---
 fastapi
-uvicorn
-SQLAlchemy>=2.0
-pydantic>=2.0
-pydantic-settings
-PyJWT
-passlib[bcrypt]
-aiofiles
-python-multipart
-pymysql
-python-dotenv
+uvicorn[standard]
+python-multipart    # für File-Uploads (UploadFile)
+
+# --- Templates ---
+jinja2              # für Jinja2Templates
+
+# --- Datenbank / ORM ---
+sqlalchemy
+alembic             # falls du Migrationen nutzt, sonst optional
+
+# DB-Treiber – such dir EINS aus, passend zu deiner MariaDB/MySQL-Config:
+mysqlclient         # klassischer C-Treiber (unter Windows manchmal nervig zu bauen)
+# oder:
+# pymysql          # reine Python-Variante, wenn du im SQLALCHEMY-URL z.B. "mysql+pymysql://..." nutzt
+
+# --- Pydantic (wird normalerweise mit FastAPI installiert) ---
+pydantic<2.0        # wenn du explizit auf v1 bleiben willst (siehe deine Warnung)
+# oder du lässt das raus und lebst mit der v2 + Kompatlayer
+
+# --- Security / Auth / Passwörter / JWT ---
+passlib[bcrypt]     # für bcrypt_sha256 etc.
+python-jose[cryptography]  # oder PyJWT, je nachdem was dein jwt_service intern nutzt
+cryptography        # für deine crypto_utils (Fernet-Verschlüsselung etc.)
+
+# --- OCR / Dokument-Handling ---
+Pillow              # from PIL import Image
+pytesseract         # Python-Bindings für Tesseract
+pdf2image           # PDF -> Bilder für OCR
+PyPDF2              # PdfReader für eingebetteten Text aus PDFs
+python-docx         # DocxDocument für DOCX-Text-Extraktion
+
+# --- Text / Similarity ---
+scikit-learn        # falls app.services.text_similarity TfidfVectorizer / cosine_similarity nutzt
+
+# --- Sonstiges / nice to have ---
+python-dotenv       # falls du .env-Dateien für Settings nutzt (optional)
+email-validator     # falls du FastAPI/Pydantic-Email-Felder sauber validierst (optional)

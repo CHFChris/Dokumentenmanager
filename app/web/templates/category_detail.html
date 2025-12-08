@@ -1,41 +1,145 @@
 {% extends "base.html" %}
+{% block title %}Kategorie · {{ category.name }}{% endblock %}
+
 {% block content %}
-<h1>Kategorie: {{ category.name }}</h1>
+<div class="space-y-6">
 
-<h2>Aktuelle Keywords</h2>
-<p>
-  {% if category.keywords %}
-    {{ category.keywords }}
-  {% else %}
-    <em>Keine Keywords hinterlegt</em>
-  {% endif %}
-</p>
+  <!-- Header -->
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <div class="text-xs uppercase tracking-wide text-[var(--ink-muted)] mb-1">
+        Kategorien & Schlagwörter
+      </div>
+      <h1 class="text-2xl font-semibold text-[var(--ink)]">
+        {{ category.name }}
+      </h1>
+      <p class="mt-1 text-sm text-[var(--ink-muted)]">
+        Keywords dieser Kategorie werden bei der automatischen Zuordnung und der Suche berücksichtigt.
+      </p>
+    </div>
 
-<h2>Vorgeschlagene Keywords</h2>
-{% set suggestions = keyword_suggestions.suggested_keywords %}
-{% if suggestions %}
-  <ul>
-    {% for kw in suggestions %}
-      <li>{{ kw }}</li>
-    {% endfor %}
-  </ul>
-{% else %}
-  <p><em>Keine Vorschläge vorhanden (noch zu wenig OCR-Text).</em></p>
-{% endif %}
+    <a href="/documents"
+       class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-1.5 text-xs font-medium text-[var(--ink)] shadow-sm hover:bg-slate-200/70">
+      Zur Dokumentenübersicht
+    </a>
+  </div>
 
-<h2>Keywords bearbeiten / Vorschläge übernehmen</h2>
-<form method="post" action="/categories/{{ category.id }}/update-keywords-web">
-  <label for="keywords_text">Keywords (kommagetrennt):</label><br>
-  <textarea id="keywords_text" name="keywords_text" rows="3" cols="60">
-{% if category.keywords %}
-{{ category.keywords }}
-{% else %}
-{% if suggestions %}
-{{ suggestions | join(", ") }}
-{% endif %}
-{% endif %}
-  </textarea>
-  <br>
-  <button type="submit">Speichern</button>
-</form>
+  <div class="grid gap-5 md:grid-cols-5">
+
+    <!-- Linke Spalte: Aktuelle Keywords + Editor -->
+    <div class="md:col-span-3 space-y-5">
+
+      <!-- Aktuelle Keywords -->
+      <section class="rounded-2xl border border-slate-200/70 bg-[var(--card)]/95 p-4 sm:p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-[var(--ink)]">Aktuelle Keywords</h2>
+            <p class="text-xs text-[var(--ink-muted)]">
+              Diese Schlagwörter sind aktuell für die Kategorie gespeichert.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-1 text-sm">
+          {% if category.keywords %}
+            <div class="flex flex-wrap gap-1.5">
+              {% for kw in category.keywords.split(",") %}
+                {% set k = kw.strip() %}
+                {% if k %}
+                  <span class="inline-flex items-center rounded-full bg-slate-900/90 px-2.5 py-1 text-[11px] font-medium text-white">
+                    {{ k }}
+                  </span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-xs italic text-[var(--ink-muted)]">
+              Noch keine Keywords hinterlegt. Du kannst unten Vorschläge übernehmen oder eigene Begriffe eintragen.
+            </p>
+          {% endif %}
+        </div>
+      </section>
+
+      <!-- Editor -->
+      <section class="rounded-2xl border border-slate-200/70 bg-[var(--card)]/95 p-4 sm:p-5 shadow-sm">
+        <div class="mb-3">
+          <h2 class="text-sm font-semibold text-[var(--ink)]">Keywords bearbeiten</h2>
+          <p class="text-xs text-[var(--ink-muted)]">
+            Trenne mehrere Begriffe mit Komma. Die Begriffe werden bei neuen OCR-Auswertungen als Indikatoren für diese Kategorie verwendet.
+          </p>
+        </div>
+
+        <form method="post" action="/categories/{{ category.id }}/update-keywords-web" class="space-y-3">
+          <div>
+            <label for="keywords_text" class="mb-1 block text-xs font-medium text-[var(--ink)]">
+              Keywords (kommagetrennt)
+            </label>
+            <textarea
+              id="keywords_text"
+              name="keywords_text"
+              rows="4"
+              class="w-full rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+            >{% if category.keywords %}
+{{ category.keywords }}{% else %}{% if keyword_suggestions.suggested_keywords %}
+{{ keyword_suggestions.suggested_keywords | join(", ") }}{% endif %}{% endif %}</textarea>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-[11px] text-[var(--ink-muted)]">
+              Tipp: Verwende eher kurze Begriffe wie "Rechnung", "Strom", "Versicherung", "Vertrag".
+            </p>
+            <button
+              type="submit"
+              class="inline-flex items-center rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-slate-800"
+            >
+              Keywords speichern
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <!-- Rechte Spalte: Vorschläge -->
+    <aside class="md:col-span-2 space-y-4">
+      <section class="rounded-2xl border border-slate-200/70 bg-[var(--card)]/95 p-4 sm:p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-[var(--ink)]">Vorgeschlagene Keywords</h2>
+            <p class="text-xs text-[var(--ink-muted)]">
+              Aus deinen vorhandenen Dokumenten (OCR-Text) extrahiert.
+            </p>
+          </div>
+        </div>
+
+        {% set suggestions = keyword_suggestions.suggested_keywords %}
+        {% if suggestions %}
+          <div class="flex flex-wrap gap-1.5 text-xs">
+            {% for kw in suggestions %}
+              <span class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-2.5 py-1 text-[11px] text-[var(--ink)]">
+                {{ kw }}
+              </span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-xs italic text-[var(--ink-muted)]">
+            Noch keine sinnvollen Vorschläge vorhanden. Lade ein paar Dokumente hoch und lasse sie von der OCR analysieren, damit hier Begriffe auftauchen.
+          </p>
+        {% endif %}
+      </section>
+
+      <section class="rounded-2xl border border-dashed border-slate-300/80 bg-[var(--bg)]/40 p-4 text-xs text-[var(--ink-muted)]">
+        <div class="mb-1 font-semibold text-[var(--ink)]">Wie werden Vorschläge generiert?</div>
+        <ul class="ml-4 list-disc space-y-1">
+          <li>OCR liest Text aus deinen Dokumenten.</li>
+          <li>Häufig vorkommende Wörter in dieser Kategorie werden gewichtet.</li>
+          <li>Stoppwörter und sehr kurze Begriffe werden gefiltert.</li>
+        </ul>
+        <p class="mt-2">
+          Ziel ist, dass sich Kategorien nach und nach selbst „anlernen“ und neue Dokumente leichter automatisch zugeordnet werden können.
+        </p>
+      </section>
+    </aside>
+
+  </div>
+</div>
 {% endblock %}

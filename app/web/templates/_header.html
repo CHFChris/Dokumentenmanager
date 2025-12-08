@@ -1,35 +1,101 @@
-<header class="w-full border-b border-gray-200 bg-white dark:bg-gray-900">
-  <nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-    <!-- Brand left -->
-    <a href="/dashboard" class="flex items-center gap-2 font-semibold text-gray-900 dark:text-gray-100">
-      <img
-        src="{{ url_for('static', path='img/logo.png') }}"
-        alt="Logo"
-        style="height:24px;width:24px;display:block"
-      />
-      <span>SPKH</span>
+<header class="w-full backdrop-blur-md bg-white/70 dark:bg-gray-900/70 border-b border-gray-200/60 dark:border-gray-700/60">
+  <nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+
+    <!-- Brand -->
+    <a href="/dashboard" class="flex items-center gap-3 group">
+      <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md flex items-center justify-center">
+        <img
+          src="{{ url_for('static', path='img/logo.png') }}"
+          alt="Logo"
+          class="h-5 w-5"
+        />
+      </div>
+      <span class="text-[16px] font-semibold tracking-tight text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">
+        SPKH
+      </span>
     </a>
 
-    <!-- Primary nav -->
-    <div class="flex items-center gap-6 text-sm">
-      <a href="/dashboard" class="{{ 'font-semibold' if current=='dashboard' else 'text-gray-600 dark:text-gray-300' }}">Dashboard</a>
-      <a href="/upload" class="{{ 'font-semibold' if current=='upload' else 'text-gray-600 dark:text-gray-300' }}">Upload</a>
-      <a href="/documents" class="{{ 'font-semibold' if current=='documents' else 'text-gray-600 dark:text-gray-300' }}">Documents</a>
-      <a href="/search" class="{{ 'font-semibold' if current=='search' else 'text-gray-600 dark:text-gray-300' }}">Search</a>
+    <!-- Navigation -->
+    <div class="hidden md:flex items-center gap-6 text-sm font-medium">
+
+      <a href="/dashboard"
+         class="pb-1 transition border-b-2
+                {% if current=='dashboard' %}
+                  border-blue-600 text-blue-600 dark:text-blue-400 font-semibold
+                {% else %}
+                  border-transparent text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-500
+                {% endif %}">
+        Dashboard
+      </a>
+
+      <a href="/upload"
+         class="pb-1 transition border-b-2
+                {% if current=='upload' %}
+                  border-blue-600 text-blue-600 dark:text-blue-400 font-semibold
+                {% else %}
+                  border-transparent text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-500
+                {% endif %}">
+        Upload
+      </a>
+
+      <a href="/documents"
+         class="pb-1 transition border-b-2
+                {% if current=='documents' %}
+                  border-blue-600 text-blue-600 dark:text-blue-400 font-semibold
+                {% else %}
+                  border-transparent text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-500
+                {% endif %}">
+        Documents
+      </a>
+
+      <a href="/search"
+         class="pb-1 transition border-b-2
+                {% if current=='search' %}
+                  border-blue-600 text-blue-600 dark:text-blue-400 font-semibold
+                {% else %}
+                  border-transparent text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-500
+                {% endif %}">
+        Search
+      </a>
+
     </div>
 
-    <!-- Right side: Theme + User + Logout -->
+    <!-- Right side -->
     <div class="flex items-center gap-3">
-      <button id="theme-toggle" class="px-2 py-1 rounded border text-sm" aria-pressed="false" title="Theme umschalten">🌙</button>
+
+      <!-- Theme toggle -->
+      <button
+        id="theme-toggle"
+        class="h-9 w-9 rounded-lg border border-gray-300 dark:border-gray-700 flex items-center justify-center
+               bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm"
+        aria-pressed="false"
+        title="Theme umschalten">
+        🌙
+      </button>
 
       {% if user %}
-        <span class="text-sm text-gray-700 dark:text-gray-300">{{ user.username or user.email }}</span>
+        <span class="hidden sm:inline text-sm text-gray-800 dark:text-gray-200 font-medium">
+          {{ user.username or user.email }}
+        </span>
+
         <form method="post" action="/auth/logout-web">
-          <button class="px-3 py-1 rounded-md border text-sm">Logout</button>
+          <button
+            class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800
+                   hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm text-sm font-medium">
+            Logout
+          </button>
         </form>
+
       {% else %}
-        <a class="text-sm underline" href="/auth/login-web">Login</a>
+
+        <a href="/auth/login-web"
+           class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800
+                  hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm text-sm font-medium">
+          Login
+        </a>
+
       {% endif %}
     </div>
+
   </nav>
 </header>

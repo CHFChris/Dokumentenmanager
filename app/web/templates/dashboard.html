@@ -2,45 +2,89 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container mx-auto max-w-6xl py-6 px-4">
+<div class="container mx-auto max-w-6xl py-6 px-4 space-y-8">
 
-  <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-semibold">
-      Willkommen zu deinem Dokumentenmanager –
-      {% if user %}
-        {{ user.username or user.email }}
-      {% else %}
-        Nutzer
-      {% endif %}
-    </h1>
-    <form method="post" action="/auth/logout-web">
-      <button class="px-4 py-2 rounded-md border">Logout</button>
-    </form>
+  {# Header / Hero #}
+  <div class="rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-sm">
+    <div>
+      <p class="text-xs uppercase tracking-wide text-sky-100/80 mb-1">Übersicht</p>
+      <h1 class="text-2xl md:text-3xl font-semibold text-white">
+        Dein Dokumentenmanager
+      </h1>
+      <p class="text-sm text-sky-100/90 mt-1">
+        {% if user %}
+          Eingeloggt als <span class="font-medium">{{ user.username or user.email }}</span>
+        {% else %}
+          Eingeloggt
+        {% endif %}
+        – behalte Uploads, Speicher und Aktivitäten im Blick.
+      </p>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/upload"
+         class="inline-flex items-center gap-2 rounded-xl bg-white/95 px-4 py-2.5 text-sm font-medium text-sky-700 shadow-sm hover:bg-white">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+        Neues Dokument hochladen
+      </a>
+      <form method="post" action="/auth/logout-web">
+        <button
+          class="inline-flex items-center rounded-xl border border-white/40 bg-white/10 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/15">
+          Logout
+        </button>
+      </form>
+    </div>
   </div>
 
-  <p class="text-gray-600 mb-6">Dokumente verwalten & blitzschnell finden.</p>
-
-  {# ---------- KPI Cards ---------- #}
+  {# KPI Cards #}
   {% set total = stats.total if stats and 'total' in stats else 0 %}
   {% set recent_week = stats.recent_week if stats and 'recent_week' in stats else 0 %}
   {% set storage_bytes = stats.storage_bytes if stats and 'storage_bytes' in stats else 0 %}
 
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-    <div class="rounded-xl border p-5">
-      <div class="font-medium mb-2">Gesamt</div>
-      <div class="text-4xl font-bold">{{ total }}</div>
-      <div class="text-xs text-gray-500 mt-1">Dokumente</div>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+    <div class="rounded-2xl border bg-white shadow-sm p-4 flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Gesamt
+        </div>
+        <div class="inline-flex items-center justify-center rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+          Dokumente
+        </div>
+      </div>
+      <div class="text-3xl md:text-4xl font-semibold text-gray-900">
+        {{ total }}
+      </div>
+      <p class="text-xs text-gray-500">
+        Alle aktuell gespeicherten Dateien.
+      </p>
     </div>
 
-    <div class="rounded-xl border p-5">
-      <div class="font-medium mb-2">Uploads (7 Tage)</div>
-      <div class="text-4xl font-bold">{{ recent_week }}</div>
-      <div class="text-xs text-gray-500 mt-1">Diese Woche</div>
+    <div class="rounded-2xl border bg-white shadow-sm p-4 flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Uploads (7 Tage)
+        </div>
+        <div class="inline-flex items-center justify-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+          Aktivität
+        </div>
+      </div>
+      <div class="text-3xl md:text-4xl font-semibold text-gray-900">
+        {{ recent_week }}
+      </div>
+      <p class="text-xs text-gray-500">
+        Neue Dokumente in der letzten Woche.
+      </p>
     </div>
 
-    <div class="rounded-xl border p-5">
-      <div class="font-medium mb-2">Speicher</div>
-      <div class="text-3xl font-bold">
+    <div class="rounded-2xl border bg-white shadow-sm p-4 flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Speicher
+        </div>
+        <div class="inline-flex items-center justify-center rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+          Nutzung
+        </div>
+      </div>
+      <div class="text-2xl md:text-3xl font-semibold text-gray-900">
         {% if storage_bytes >= 1024*1024*1024 %}
           {{ (storage_bytes / (1024*1024*1024)) | round(2) }} GB
         {% elif storage_bytes >= 1024*1024 %}
@@ -51,97 +95,179 @@
           {{ storage_bytes }} B
         {% endif %}
       </div>
-      <div class="text-xs text-gray-500 mt-1">von 10 GB</div>
+      <p class="text-xs text-gray-500">
+        von 10 GB verfügbar.
+      </p>
     </div>
   </div>
 
-  {# ---------- Recently Uploaded ---------- #}
-  <div class="rounded-xl border">
-    <div class="p-5 border-b">
-      <div class="text-lg font-medium">Zuletzt hochgeladen</div>
-      <div class="text-sm text-gray-500">Deine neuesten Dateien</div>
-    </div>
+  {# Content Grid: Left = Recent uploads, Right = Quick actions / Info #}
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-    {% set recent_items = stats.recent_items if stats and 'recent_items' in stats else [] %}
-    {% if recent_items %}
-      <ul>
-        {% for item in recent_items %}
-          <li class="flex items-center justify-between p-5 border-b last:border-0">
-            <div>
-              <div class="font-medium">
-                <a class="underline" href="/documents/{{ item.id }}">{{ item.name }}</a>
-              </div>
-              <div class="text-xs text-gray-500">
-                {% if item.created_at %}
-                  {{ item.created_at.strftime("%d.%m.%Y %H:%M") }}
-                {% endif %}
-              </div>
-            </div>
-            <div class="text-sm text-gray-500">
-              <a class="underline" href="/documents/{{ item.id }}">Öffnen</a>
-            </div>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <div class="p-5 text-sm text-gray-500">Noch keine Uploads.</div>
-    {% endif %}
-  </div>
-
-  {# ---------- Latest Documents (paged) ---------- #}
-  {% if docs and docs.items %}
-    <div class="rounded-xl border mt-6">
-      <div class="p-5 border-b">
-        <div class="text-lg font-medium">Alle Dokumente</div>
+    {# Recently Uploaded #}
+    <div class="lg:col-span-2 rounded-2xl border bg-white shadow-sm overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-4 border-b bg-gray-50/60">
+        <div>
+          <div class="text-sm font-semibold text-gray-900">
+            Zuletzt hochgeladen
+          </div>
+          <div class="text-xs text-gray-500">
+            Deine aktuellsten Dateien im Überblick.
+          </div>
+        </div>
+        <a href="/documents" class="text-xs font-medium text-sky-700 hover:text-sky-800">
+          Alle Dokumente ansehen →
+        </a>
       </div>
-      <div class="p-5 overflow-x-auto">
+
+      {% set recent_items = stats.recent_items if stats and 'recent_items' in stats else [] %}
+      {% if recent_items %}
+        <ul class="divide-y">
+          {% for item in recent_items %}
+            {% set ext = (item.name.rsplit('.',1)[-1]).upper() if '.' in item.name else 'FILE' %}
+            <li class="flex items-center justify-between px-5 py-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-[11px] font-semibold text-sky-700">
+                  {{ ext }}
+                </div>
+                <div class="min-w-0">
+                  <div class="text-sm font-medium text-gray-900 truncate">
+                    <a class="hover:underline" href="/documents/{{ item.id }}">
+                      {{ item.name }}
+                    </a>
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    {% if item.created_at %}
+                      {{ item.created_at.strftime("%d.%m.%Y %H:%M") }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 text-xs">
+                <a class="text-sky-700 hover:underline" href="/documents/{{ item.id }}">Öffnen</a>
+                <a class="text-gray-500 hover:underline" href="/documents/{{ item.id }}/download">Download</a>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="px-5 py-6 text-sm text-gray-500">
+          Noch keine Uploads. Starte mit einem
+          <a href="/upload" class="text-sky-700 hover:underline">neuen Dokument</a>.
+        </div>
+      {% endif %}
+    </div>
+
+    {# Right: Quick actions #}
+    <div class="space-y-4">
+      <div class="rounded-2xl border bg-white shadow-sm p-5">
+        <div class="text-sm font-semibold text-gray-900 mb-2">
+          Schnellaktionen
+        </div>
+        <p class="text-xs text-gray-500 mb-4">
+          Häufige Aktionen direkt vom Dashboard starten.
+        </p>
+        <div class="space-y-2">
+          <a href="/upload"
+             class="flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm hover:bg-gray-50">
+            <span>Neues Dokument hochladen</span>
+            <span class="text-xs text-gray-400">U</span>
+          </a>
+          <a href="/documents"
+             class="flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm hover:bg-gray-50">
+            <span>Dokumentenbibliothek öffnen</span>
+            <span class="text-xs text-gray-400">D</span>
+          </a>
+          <a href="/category-keywords"
+             class="flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm hover:bg-gray-50">
+            <span>Kategorien & Schlagwörter pflegen</span>
+            <span class="text-xs text-gray-400">K</span>
+          </a>
+          <a href="/security-info"
+             class="flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm hover:bg-gray-50">
+            <span>Sicherheitsinformationen anzeigen</span>
+            <span class="text-xs text-gray-400">S</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border bg-slate-900 text-slate-50 p-5">
+        <div class="text-sm font-semibold mb-2">
+          Tipp: Such- und Filterfunktionen
+        </div>
+        <p class="text-xs text-slate-200 mb-2">
+          In der Dokumentenübersicht kannst du nach Begriffen suchen, nach
+          Kategorien filtern und Zeiträume eingrenzen.
+        </p>
+        <p class="text-xs text-slate-400">
+          Ideal für Rechnungen, Verträge und wiederkehrende Vorlagen.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  {# Latest Documents Table (kompakte Übersicht) #}
+  {% if docs %}
+    <div class="rounded-2xl border bg-white shadow-sm">
+      <div class="flex items-center justify-between px-5 py-4 border-b bg-gray-50/60">
+        <div>
+          <div class="text-sm font-semibold text-gray-900">
+            Kurzübersicht: letzte Dokumente
+          </div>
+          <div class="text-xs text-gray-500">
+            Auszug aus deiner Bibliothek (max. 10 Einträge).
+          </div>
+        </div>
+      </div>
+      <div class="px-5 py-4 overflow-x-auto">
         <table class="min-w-full text-sm">
-          <thead class="text-left border-b">
-            <tr>
-              <th class="py-2 pr-4">Titel</th>
-              <th class="py-2 pr-4">Typ</th>
-              <th class="py-2 pr-4">Größe</th>
-              <th class="py-2">Aktionen</th>
+          <thead>
+            <tr class="text-xs uppercase tracking-wide text-gray-500 border-b">
+              <th class="py-2 pr-4 text-left">Titel</th>
+              <th class="py-2 pr-4 text-left">Typ</th>
+              <th class="py-2 pr-4 text-left">Größe</th>
+              <th class="py-2 text-left">Aktionen</th>
             </tr>
           </thead>
-          <tbody>
-            {% for d in docs.items %}
-            <tr class="border-b last:border-0">
-              <td class="py-2 pr-4">
-                <a class="underline" href="/documents/{{ d.id }}">{{ d.name }}</a>
-              </td>
-              <td class="py-2 pr-4">
-                {% if '.' in d.name %}{{ (d.name.rsplit('.',1)[-1]).upper() }}{% else %}FILE{% endif %}
-              </td>
-              <td class="py-2 pr-4">
-                {% if d.size >= 1024*1024 %}
-                  {{ (d.size/1024/1024)|round(2) }} MB
-                {% elif d.size >= 1024 %}
-                  {{ (d.size/1024)|round(0) }} KB
-                {% else %}
-                  {{ d.size }} B
-                {% endif %}
-              </td>
-              <td class="py-2">
-                <a class="underline mr-3" href="/documents/{{ d.id }}">Öffnen</a>
-                <a class="underline" href="/documents/{{ d.id }}/download">Download</a>
-              </td>
-            </tr>
+          <tbody class="divide-y">
+            {% for d in docs %}
+              {% set ext = (d.name.rsplit('.',1)[-1]).upper() if '.' in d.name else 'FILE' %}
+              <tr class="hover:bg-gray-50">
+                <td class="py-2.5 pr-4 max-w-xs">
+                  <a class="text-sm font-medium text-gray-900 hover:underline" href="/documents/{{ d.id }}">
+                    {{ d.name }}
+                  </a>
+                </td>
+                <td class="py-2.5 pr-4">
+                  <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium
+                                {% if ext == 'PDF' %}bg-red-50 text-red-700
+                                {% elif ext in ['TXT','MD'] %}bg-emerald-50 text-emerald-700
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                    {{ ext }}
+                  </span>
+                </td>
+                <td class="py-2.5 pr-4 text-gray-700">
+                  {% if d.size >= 1024*1024 %}
+                    {{ (d.size/1024/1024)|round(2) }} MB
+                  {% elif d.size >= 1024 %}
+                    {{ (d.size/1024)|round(0) }} KB
+                  {% else %}
+                    {{ d.size }} B
+                  {% endif %}
+                </td>
+                <td class="py-2.5">
+                  <div class="flex items-center gap-3 text-xs">
+                    <a class="text-sky-700 hover:underline" href="/documents/{{ d.id }}">Öffnen</a>
+                    <a class="text-gray-600 hover:underline" href="/documents/{{ d.id }}/download">Download</a>
+                  </div>
+                </td>
+              </tr>
             {% endfor %}
           </tbody>
         </table>
-
-        {% if docs.page or docs.pages %}
-          <div class="mt-4 flex gap-2">
-            {% if docs.page > 1 %}
-              <a class="underline" href="?page={{ docs.page - 1 }}">« Zurück</a>
-            {% endif %}
-            <span class="text-gray-600">Seite {{ docs.page }} von {{ docs.pages }}</span>
-            {% if docs.page < docs.pages %}
-              <a class="underline" href="?page={{ docs.page + 1 }}">Weiter »</a>
-            {% endif %}
-          </div>
-        {% endif %}
       </div>
     </div>
   {% endif %}

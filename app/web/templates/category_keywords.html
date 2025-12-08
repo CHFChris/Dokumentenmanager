@@ -1,44 +1,54 @@
 {% extends "base.html" %}
 
+{% block title %}Kategorien & Schlagwörter{% endblock %}
+
 {% block content %}
-<div class="container py-4">
+<div class="mx-auto max-w-6xl px-4 py-6 space-y-6">
 
   <!-- Header / Toolbar -->
-  <div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="flex items-center justify-between gap-3">
     <div>
-      <h1 class="h4 mb-1">Kategorien und Schlagwörter</h1>
-      <div class="text-muted small">
-        Eigene Schlagwörter pflegen und KI-Vorschläge aus OCR verwalten.
+      <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)] mb-1">
+        Kategorien & Schlagwörter
       </div>
+      <h1 class="text-2xl font-semibold text-[var(--ink)]">
+        Kategorien verwalten
+      </h1>
+      <p class="mt-1 text-sm text-[var(--ink-muted)]">
+        Eigene Schlagwörter pflegen und KI-Vorschläge aus OCR-Texten verwalten.
+      </p>
     </div>
-    <div>
-      <a href="/documents" class="btn btn-outline-secondary btn-sm">
-        Zurück zu Dokumenten
-      </a>
-    </div>
+    <a href="/documents"
+       class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-1.5 text-xs font-medium text-[var(--ink)] shadow-sm hover:bg-slate-200/70">
+      Zur Dokumentenübersicht
+    </a>
   </div>
 
-  <div class="row g-4">
+  <div class="grid gap-5 md:grid-cols-3">
+
     <!-- linke Spalte: Kategorienliste -->
-    <div class="col-lg-4 col-md-5">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header py-2 bg-light border-0">
-          <span class="fw-semibold text-uppercase small text-muted">Kategorien</span>
+    <div class="md:col-span-1">
+      <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm h-full flex flex-col">
+        <div class="border-b border-slate-200/80 px-4 py-3">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
+            Kategorien
+          </div>
         </div>
-        <div class="card-body pt-2 pb-3">
-          <p class="small text-muted mb-2">
-            Wähle eine Kategorie aus, um deren Schlagwörter zu bearbeiten.
+        <div class="px-4 pt-3 pb-4">
+          <p class="mb-2 text-xs text-[var(--ink-muted)]">
+            Wähle eine Kategorie aus, um ihre Schlagwörter zu bearbeiten.
           </p>
           <div id="category-list"
-               class="list-group list-group-flush border rounded"
-               style="max-height: 70vh; overflow-y: auto;">
+               class="mt-2 rounded-2xl border border-slate-200/80 bg-[var(--bg)]/60 overflow-y-auto max-h-[70vh]">
             {% for cat in categories %}
-            <button type="button"
-                    class="list-group-item list-group-item-action category-item d-flex justify-content-between align-items-center"
-                    data-category-id="{{ cat.id }}"
-                    data-category-name="{{ cat.name }}">
-              <span class="text-truncate">{{ cat.name }}</span>
-            </button>
+              <button
+                type="button"
+                class="category-item flex w-full items-center justify-between px-3 py-2 text-sm text-[var(--ink)] hover:bg-slate-900/5 border-b border-slate-200/60 last:border-b-0"
+                data-category-id="{{ cat.id }}"
+                data-category-name="{{ cat.name }}"
+              >
+                <span class="truncate">{{ cat.name }}</span>
+              </button>
             {% endfor %}
           </div>
         </div>
@@ -46,97 +56,103 @@
     </div>
 
     <!-- rechte Spalte: Schlagwörter -->
-    <div class="col-lg-8 col-md-7">
+    <div class="md:col-span-2 space-y-4">
 
       <!-- Platzhalter, wenn keine Kategorie ausgewählt ist -->
-      <div id="no-category-panel" class="card shadow-sm border-0">
-        <div class="card-body py-4">
-          <div class="mb-2 fw-semibold">Keine Kategorie ausgewählt</div>
-          <div class="small text-muted">
-            Wähle links eine Kategorie aus, um eigene Schlagwörter und KI-Vorschläge anzuzeigen und zu bearbeiten.
-          </div>
+      <div id="no-category-panel"
+           class="rounded-2xl border border-dashed border-slate-300/80 bg-[var(--card)]/60 px-5 py-6 shadow-sm">
+        <div class="mb-2 text-sm font-semibold text-[var(--ink)]">
+          Keine Kategorie ausgewählt
         </div>
+        <p class="text-xs text-[var(--ink-muted)]">
+          Wähle links eine Kategorie aus, um eigene Schlagwörter und KI-Vorschläge anzuzeigen und zu bearbeiten.
+        </p>
       </div>
 
-      <div id="category-keywords-panel" style="display: none;">
+      <!-- Panel für gewählte Kategorie -->
+      <div id="category-keywords-panel" class="space-y-4 hidden">
+
         <!-- Aktive Kategorie Kopfbereich -->
-        <div class="card shadow-sm border-0 mb-4">
-          <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between">
-            <div class="mb-2 mb-md-0">
-              <div class="small text-uppercase text-muted">Aktive Kategorie</div>
-              <div class="fw-semibold fs-5" id="category-title">Kategorie</div>
+        <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 px-5 py-4 shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
+                Aktive Kategorie
+              </div>
+              <div class="text-lg font-semibold text-[var(--ink)]" id="category-title">Kategorie</div>
             </div>
-            <div class="text-end small text-muted">
-              Vorschläge basieren auf OCR-Texten von Dokumenten in dieser Kategorie.
-            </div>
+            <p class="max-w-xs text-[11px] text-right text-[var(--ink-muted)]">
+              Vorschläge basieren auf OCR-Texten deiner Dokumente in dieser Kategorie.
+            </p>
           </div>
         </div>
 
-        <!-- Eigene Keywords (volle Breite) -->
-        <div class="card shadow-sm border-0 mb-4">
-          <div class="card-header py-2 bg-light border-0 d-flex justify-content-between align-items-center">
-            <span class="fw-semibold">Eigene Schlagwörter</span>
-            <span class="badge bg-white text-muted border small">
+        <!-- Eigene Keywords -->
+        <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
+          <div class="flex items-center justify-between border-b border-slate-200/80 px-5 py-3">
+            <div class="text-sm font-semibold text-[var(--ink)]">Eigene Schlagwörter</div>
+            <span class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-2.5 py-1 text-[11px] text-[var(--ink-muted)]">
               Manuell gepflegt
             </span>
           </div>
-          <div class="card-body">
-            <p class="text-muted small mb-2">
+          <div class="px-5 py-4 space-y-4">
+            <p class="text-xs text-[var(--ink-muted)]">
               Diese Schlagwörter hast du selbst für die Kategorie definiert.
             </p>
 
             <!-- Liste eigener Keywords -->
-            <div id="existing-keywords" class="mb-3">
-              <span class="text-muted small">Keine eigenen Schlagwörter definiert.</span>
+            <div id="existing-keywords" class="text-xs text-[var(--ink-muted)]">
+              <span>Keine eigenen Schlagwörter definiert.</span>
             </div>
 
             <!-- Eingabe / Hinzufügen -->
-            <div class="row g-2 align-items-center mb-2">
-              <div class="col-sm-8 col-12">
-                <input type="text"
-                       id="new-keyword-input"
-                       class="form-control form-control-sm"
-                       placeholder="Neues Schlagwort eingeben">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div class="sm:flex-1">
+                <input
+                  type="text"
+                  id="new-keyword-input"
+                  class="w-full rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                  placeholder="Neues Schlagwort eingeben"
+                >
               </div>
-              <div class="col-sm-4 col-12 text-sm-end">
-                <button class="btn btn-primary btn-sm w-100 w-sm-auto"
-                        id="add-keyword-btn"
-                        type="button">
+              <div class="sm:w-auto">
+                <button
+                  class="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-sm hover:bg-slate-800"
+                  id="add-keyword-btn"
+                  type="button"
+                >
                   Schlagwort hinzufügen
                 </button>
               </div>
             </div>
 
-            <div class="small text-muted">
-              Einzelne Schlagwörter können über das „x“ gelöscht werden.
-              Änderungen werden automatisch gespeichert.
-            </div>
+            <p class="text-[11px] text-[var(--ink-muted)]">
+              Einzelne Schlagwörter können über das „x“ gelöscht werden. Änderungen werden automatisch gespeichert.
+            </p>
           </div>
         </div>
 
-        <!-- OCR-Vorschläge (volle Breite) -->
-        <div class="card shadow-sm border-0 mb-4">
-          <div class="card-header py-2 bg-light border-0 d-flex justify-content-between align-items-center">
-            <span class="fw-semibold">Schlagwörter aus OCR</span>
-            <span class="badge bg-white text-muted border small">
+        <!-- OCR-Vorschläge -->
+        <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
+          <div class="flex items-center justify-between border-b border-slate-200/80 px-5 py-3">
+            <div class="text-sm font-semibold text-[var(--ink)]">Schlagwörter aus OCR</div>
+            <span class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-2.5 py-1 text-[11px] text-[var(--ink-muted)]">
               KI-Vorschläge
             </span>
           </div>
-          <div class="card-body">
-            <p class="text-muted small mb-2">
-              Diese Schlagwörter wurden automatisch aus den OCR-Texten
-              deiner Dokumente in dieser Kategorie erkannt.
+          <div class="px-5 py-4 space-y-3">
+            <p class="text-xs text-[var(--ink-muted)]">
+              Diese Schlagwörter wurden automatisch aus den OCR-Texten deiner Dokumente in dieser Kategorie erkannt.
             </p>
 
             <!-- Liste der Vorschläge -->
-            <div id="suggested-keywords" class="mb-2">
-              <span class="text-muted small">Noch keine Vorschläge vorhanden.</span>
+            <div id="suggested-keywords" class="text-xs text-[var(--ink-muted)]">
+              <span>Noch keine Vorschläge vorhanden.</span>
             </div>
 
-            <div class="small text-muted">
-              Das „x“ blendet einzelne Vorschläge aus. Die Vorschläge selbst werden
-              nicht dauerhaft gespeichert, sondern dienen als Orientierung.
-            </div>
+            <p class="text-[11px] text-[var(--ink-muted)]">
+              Das „x“ blendet einzelne Vorschläge aus. Die Vorschläge werden nicht dauerhaft gespeichert, sondern dienen als Orientierung.
+            </p>
           </div>
         </div>
 
@@ -156,20 +172,19 @@ function createKeywordBadge(text, options) {
 
   const span = document.createElement("span");
   span.className =
-    "badge rounded-pill border me-1 mb-1 d-inline-flex align-items-center " +
+    "inline-flex items-center rounded-full border border-slate-300 px-2.5 py-1 text-[11px] text-[var(--ink)] mr-1 mb-1 " +
     (extraClass || "");
 
   const label = document.createElement("span");
   label.textContent = text;
-  label.className = "me-1";
+  label.className = "mr-1";
   span.appendChild(label);
 
   if (deletable && typeof onDelete === "function") {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "btn btn-sm btn-link p-0 text-muted";
-    btn.innerHTML = "&times;";
-    btn.style.lineHeight = "1";
+    btn.className = "ml-0.5 text-[10px] text-slate-500 hover:text-slate-700";
+    btn.textContent = "×";
     btn.addEventListener("click", function (ev) {
       ev.stopPropagation();
       onDelete();
@@ -187,13 +202,13 @@ function renderExistingKeywords() {
 
   if (!currentKeywords || currentKeywords.length === 0) {
     container.innerHTML =
-      '<span class="text-muted small">Keine eigenen Schlagwörter definiert.</span>';
+      '<span class="text-[11px] text-[var(--ink-muted)]">Keine eigenen Schlagwörter definiert.</span>';
     return;
   }
 
   currentKeywords.forEach((kw) => {
     const badge = createKeywordBadge(kw, {
-      extraClass: "bg-light text-body",
+      extraClass: "bg-[var(--bg)]",
       deletable: true,
       onDelete: () => removeKeyword(kw),
     });
@@ -208,13 +223,13 @@ function renderSuggestedKeywords(list) {
 
   if (!list || list.length === 0) {
     container.innerHTML =
-      '<span class="text-muted small">Noch keine Vorschläge vorhanden.</span>';
+      '<span class="text-[11px] text-[var(--ink-muted)]">Noch keine Vorschläge vorhanden.</span>';
     return;
   }
 
   list.forEach((kw) => {
     const badge = createKeywordBadge(kw, {
-      extraClass: "bg-white text-body",
+      extraClass: "bg-[var(--bg)]",
       deletable: true,
       onDelete: () => {
         badgeRef.remove();
@@ -296,11 +311,13 @@ function loadCategoryKeywords(categoryId, categoryName) {
 
   titleEl.textContent = categoryName;
 
-  panel.style.display = "block";
-  noPanel.style.display = "none";
+  panel.classList.remove("hidden");
+  noPanel.classList.add("hidden");
 
-  existingEl.innerHTML = '<span class="text-muted small">Lade Daten...</span>';
-  suggestedEl.innerHTML = '<span class="text-muted small">Lade Daten...</span>';
+  existingEl.innerHTML =
+    '<span class="text-[11px] text-[var(--ink-muted)]">Lade Daten...</span>';
+  suggestedEl.innerHTML =
+    '<span class="text-[11px] text-[var(--ink-muted)]">Lade Daten...</span>';
 
   fetch(`/api/categories/${categoryId}/keyword-suggestions`)
     .then((response) => {
@@ -319,9 +336,9 @@ function loadCategoryKeywords(categoryId, categoryName) {
     .catch((err) => {
       console.error("Fehler beim Laden der Keyword-Suggestions:", err);
       existingEl.innerHTML =
-        '<span class="text-danger small">Fehler beim Laden der Daten.</span>';
+        '<span class="text-[11px] text-red-500">Fehler beim Laden der Daten.</span>';
       suggestedEl.innerHTML =
-        '<span class="text-danger small">Fehler beim Laden der Daten.</span>';
+        '<span class="text-[11px] text-red-500">Fehler beim Laden der Daten.</span>';
     });
 }
 
@@ -330,8 +347,20 @@ document.addEventListener("DOMContentLoaded", function () {
   const items = document.querySelectorAll(".category-item");
   items.forEach((item) => {
     item.addEventListener("click", function () {
-      items.forEach((it) => it.classList.remove("active"));
-      this.classList.add("active");
+      // Styling zurücksetzen
+      items.forEach((it) => {
+        it.classList.remove(
+          "bg-slate-900/10",
+          "border-slate-400",
+          "shadow-sm"
+        );
+      });
+      // aktives Item hervorheben
+      this.classList.add(
+        "bg-slate-900/10",
+        "border-slate-400",
+        "shadow-sm"
+      );
 
       const catId = this.getAttribute("data-category-id");
       const catName = this.getAttribute("data-category-name");

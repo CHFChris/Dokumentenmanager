@@ -1,53 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Document details{% endblock %}
+{% block title %}Dokumentdetails · SPKH{% endblock %}
 
 {% block content %}
-<div class="container mx-auto max-w-6xl py-6 px-4">
+<div class="mx-auto max-w-6xl px-4 py-6 space-y-6">
 
-  <a href="/documents" class="text-sm text-gray-500 inline-flex items-center mb-4">
-    &larr; Back to Documents
+  <!-- Back link -->
+  <a href="/documents"
+     class="inline-flex items-center text-xs font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]">
+    <span class="mr-1">←</span>
+    Zur Dokumentenübersicht
   </a>
 
-  <h1 class="text-2xl font-semibold mb-1">{{ doc.name }}</h1>
-  <p class="text-sm text-gray-500 mb-6">
-    Document details, versions &amp; actions
-  </p>
+  <!-- Title -->
+  <div>
+    <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)] mb-1">
+      Dokument
+    </div>
+    <h1 class="text-2xl font-semibold text-[var(--ink)] break-words">
+      {{ doc.name }}
+    </h1>
+    <p class="mt-1 text-sm text-[var(--ink-muted)]">
+      Metadaten, Kategorien, Versionen und Aktionen.
+    </p>
+  </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+  <!-- 2-Spalten Layout -->
+  <div class="grid gap-5 lg:grid-cols-2">
+
     <!-- Details & Metadata -->
-    <div class="rounded-2xl border bg-white shadow-sm">
-      <div class="border-b px-6 py-4">
-        <h2 class="text-base font-semibold">Details &amp; Metadata</h2>
+    <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
+      <div class="border-b border-slate-200/80 px-5 py-3">
+        <h2 class="text-sm font-semibold text-[var(--ink)]">Details &amp; Metadaten</h2>
       </div>
-      <div class="px-6 py-4 space-y-3 text-sm">
-        <div class="flex justify-between">
-          <span class="text-gray-500">Upload Date</span>
-          <span class="font-medium">
+      <div class="px-5 py-4 space-y-3 text-sm">
+
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-[var(--ink-muted)]">Upload-Datum</span>
+          <span class="font-medium text-[var(--ink)]">
             {% if doc.created_at %}
-              {{ doc.created_at.strftime("%Y-%m-%d") }}
+              {{ doc.created_at.strftime("%d.%m.%Y") }}
             {% else %}
-              &mdash;
+              —
             {% endif %}
           </span>
         </div>
 
-        <div class="flex justify-between">
-          <span class="text-gray-500">File Type</span>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-[var(--ink-muted)]">Dateityp</span>
           <span class="inline-flex items-center gap-2">
-            <span class="inline-flex h-6 px-2 rounded-full bg-red-50 text-red-600 text-xs font-semibold items-center justify-center">
+            <span class="inline-flex h-6 min-w-[40px] items-center justify-center rounded-full bg-sky-500/10 px-2 text-[11px] font-semibold text-sky-500">
               {{ doc.ext }}
             </span>
           </span>
         </div>
 
-        <div class="flex justify-between">
-          <span class="text-gray-500">MIME</span>
-          <span class="font-mono text-xs text-gray-700">{{ doc.mime or "—" }}</span>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-[var(--ink-muted)]">MIME-Typ</span>
+          <span class="font-mono text-[11px] text-[var(--ink)] truncate max-w-[60%] text-right">
+            {{ doc.mime or "—" }}
+          </span>
         </div>
 
-        <div class="flex justify-between">
-          <span class="text-gray-500">File Size</span>
-          <span class="font-medium">
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-[var(--ink-muted)]">Dateigröße</span>
+          <span class="font-medium text-[var(--ink)]">
             {% if doc.size >= 1024*1024 %}
               {{ (doc.size/1024/1024)|round(2) }} MB
             {% elif doc.size >= 1024 %}
@@ -58,80 +74,90 @@
           </span>
         </div>
 
-        <div class="flex justify-between">
-          <span class="text-gray-500">SHA256</span>
-          <span class="font-mono text-[11px] break-all text-gray-700">
+        <div class="space-y-1 pt-1">
+          <span class="text-[var(--ink-muted)] text-xs">SHA256</span>
+          <div class="rounded-xl bg-[var(--bg)]/70 px-3 py-2 font-mono text-[11px] leading-relaxed text-[var(--ink)] break-all border border-slate-200/80">
             {{ doc.sha256 }}
-          </span>
+          </div>
         </div>
 
-        <div class="pt-4 border-t">
-          <form method="post" action="/documents/{{ doc.id }}/rename-web" class="space-y-2">
-            <label class="text-xs font-semibold text-gray-500 block mb-1">
-              Filename
+        <!-- Rename -->
+        <div class="mt-4 border-t border-slate-200/80 pt-4">
+          <form method="post"
+                action="/documents/{{ doc.id }}/rename-web"
+                class="space-y-2">
+            <label class="block text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
+              Dateiname
             </label>
             <input
               type="text"
               name="new_name"
               value="{{ doc.name }}"
-              class="w-full rounded-lg border px-3 py-2 text-sm"
+              class="w-full rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
               required
             >
             <button
               type="submit"
-              class="inline-flex items-center rounded-lg border px-4 py-2 text-sm font-medium"
+              class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-1.5 text-xs font-medium text-[var(--ink)] shadow-sm hover:bg-slate-200/70"
             >
-              Rename (new version)
+              Umbenennen (neue Version)
             </button>
           </form>
         </div>
       </div>
     </div>
 
-    <!-- Quick Actions + Kategorie -->
-    <div class="rounded-2xl border bg-white shadow-sm">
-      <div class="border-b px-6 py-4">
-        <h2 class="text-base font-semibold">Quick Actions</h2>
+    <!-- Quick Actions + Kategorie + Version Upload -->
+    <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
+      <div class="border-b border-slate-200/80 px-5 py-3">
+        <h2 class="text-sm font-semibold text-[var(--ink)]">Aktionen</h2>
       </div>
-      <div class="px-6 py-4 space-y-6 text-sm">
+      <div class="px-5 py-4 space-y-6 text-sm">
 
         <!-- Anzeigen / Download / Delete -->
-        <div class="flex gap-3">
-          <a
-            href="/documents/{{ doc.id }}/view"
-            class="flex-1 inline-flex justify-center rounded-lg px-4 py-2 text-sm font-semibold border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Anzeigen
-          </a>
-          <a
-            href="/documents/{{ doc.id }}/download"
-            class="flex-1 inline-flex justify-center rounded-lg px-4 py-2 text-sm font-semibold bg-gray-900 text-white"
-          >
-            Download
-          </a>
-          <form method="post" action="/documents/{{ doc.id }}/delete-web">
-            <button
-              type="submit"
-              class="inline-flex justify-center rounded-lg border px-4 py-2 text-sm font-semibold text-red-600"
+        <div class="space-y-2">
+          <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
+            Schnellzugriff
+          </div>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <a
+              href="/documents/{{ doc.id }}/view"
+              class="flex-1 inline-flex justify-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-2 text-xs font-semibold text-[var(--ink)] shadow-sm hover:bg-slate-200/70"
             >
-              Delete
-            </button>
-          </form>
+              Anzeigen
+            </a>
+            <a
+              href="/documents/{{ doc.id }}/download"
+              class="flex-1 inline-flex justify-center rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800"
+            >
+              Download
+            </a>
+            <form method="post" action="/documents/{{ doc.id }}/delete-web">
+              <button
+                type="submit"
+                class="inline-flex w-full justify-center rounded-full border border-red-300 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-500/20"
+              >
+                Löschen
+              </button>
+            </form>
+          </div>
         </div>
 
         <!-- Kategorie setzen -->
-        <div class="pt-2 border-t">
-          <h3 class="text-xs font-semibold text-gray-500 mb-2">Kategorie</h3>
+        <div class="space-y-2 border-t border-slate-200/80 pt-4">
+          <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
+            Kategorie
+          </div>
 
           {% if categories and categories|length > 0 %}
             <form
               method="post"
               action="/documents/{{ doc.id }}/set-category-web"
-              class="flex gap-2"
+              class="flex flex-col gap-2 sm:flex-row"
             >
               <select
                 name="category_id"
-                class="flex-1 rounded-lg border px-3 py-2 text-sm"
+                class="flex-1 rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
               >
                 <option value="">Keine Kategorie</option>
                 {% for cat in categories %}
@@ -144,23 +170,23 @@
               </select>
               <button
                 type="submit"
-                class="inline-flex items-center rounded-lg border px-4 py-2 text-sm font-semibold"
+                class="inline-flex items-center justify-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-2 text-xs font-medium text-[var(--ink)] shadow-sm hover:bg-slate-200/70"
               >
                 Speichern
               </button>
             </form>
           {% else %}
-            <p class="text-xs text-gray-500">
-              Noch keine Kategorien vorhanden. Lege zuerst auf der Dokumente-Seite eine Kategorie an.
+            <p class="text-xs text-[var(--ink-muted)]">
+              Noch keine Kategorien vorhanden. Lege zuerst in der Dokumentenbibliothek eine Kategorie an.
             </p>
           {% endif %}
         </div>
 
         <!-- Neue Version hochladen -->
-        <div class="pt-2 border-t">
-          <h3 class="text-xs font-semibold text-gray-500 mb-2">
-            Upload new version
-          </h3>
+        <div class="space-y-2 border-t border-slate-200/80 pt-4">
+          <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
+            Neue Version hochladen
+          </div>
           <form
             method="post"
             action="/documents/{{ doc.id }}/upload-version-web"
@@ -170,20 +196,20 @@
             <input
               type="file"
               name="file"
-              class="w-full text-sm"
+              class="block w-full text-xs text-[var(--ink)] file:mr-3 file:rounded-full file:border-0 file:bg-slate-900 file:px-4 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-800"
               required
             >
             <input
               type="text"
               name="note"
-              placeholder="Change note (optional)"
-              class="w-full rounded-lg border px-3 py-2 text-sm"
+              placeholder="Änderungskommentar (optional)"
+              class="w-full rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             >
             <button
               type="submit"
-              class="inline-flex items-center rounded-lg border px-4 py-2 text-sm font-semibold"
+              class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-2 text-xs font-semibold text-[var(--ink)] shadow-sm hover:bg-slate-200/70"
             >
-              Upload
+              Version hochladen
             </button>
           </form>
         </div>
@@ -193,28 +219,33 @@
   </div>
 
   <!-- Versions-Liste -->
-  <div class="rounded-2xl border bg-white shadow-sm">
-    <div class="border-b px-6 py-4">
-      <h2 class="text-base font-semibold">Versions</h2>
+  <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
+    <div class="border-b border-slate-200/80 px-5 py-3 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-[var(--ink)]">Versionen</h2>
+      <span class="text-[11px] text-[var(--ink-muted)]">
+        Historie dieses Dokuments
+      </span>
     </div>
-    <div class="px-6 py-6">
+    <div class="px-5 py-5">
       {% if versions and versions|length > 0 %}
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
-            <thead class="border-b text-left text-xs text-gray-500">
+            <thead class="border-b border-slate-200/80 text-left text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
               <tr>
                 <th class="py-2 pr-4">Version</th>
-                <th class="py-2 pr-4">Size</th>
-                <th class="py-2 pr-4">Created</th>
-                <th class="py-2 pr-4">Note</th>
-                <th class="py-2">Actions</th>
+                <th class="py-2 pr-4">Größe</th>
+                <th class="py-2 pr-4">Erstellt</th>
+                <th class="py-2 pr-4">Notiz</th>
+                <th class="py-2 text-right">Aktion</th>
               </tr>
             </thead>
             <tbody>
               {% for v in versions %}
-                <tr class="border-b last:border-0">
-                  <td class="py-2 pr-4">v{{ v.version_number or "?" }}</td>
-                  <td class="py-2 pr-4">
+                <tr class="border-b border-slate-100 last:border-0">
+                  <td class="py-2 pr-4 text-[var(--ink)]">
+                    v{{ v.version_number or "?" }}
+                  </td>
+                  <td class="py-2 pr-4 text-[var(--ink)]">
                     {% if v.size_bytes >= 1024*1024 %}
                       {{ (v.size_bytes/1024/1024)|round(2) }} MB
                     {% elif v.size_bytes >= 1024 %}
@@ -223,27 +254,28 @@
                       {{ v.size_bytes }} B
                     {% endif %}
                   </td>
-                  <td class="py-2 pr-4">
+                  <td class="py-2 pr-4 text-[var(--ink)]">
                     {% if v.created_at %}
-                      {{ v.created_at.strftime("%Y-%m-%d %H:%M") }}
+                      {{ v.created_at.strftime("%d.%m.%Y %H:%M") }}
                     {% else %}
-                      &mdash;
+                      —
                     {% endif %}
                   </td>
-                  <td class="py-2 pr-4">
+                  <td class="py-2 pr-4 text-[var(--ink-muted)]">
                     {{ v.note or "—" }}
                   </td>
-                  <td class="py-2">
+                  <td class="py-2 text-right">
                     <form
                       method="post"
                       action="/documents/{{ doc.id }}/restore-version-web"
+                      class="inline-flex"
                     >
                       <input type="hidden" name="version_id" value="{{ v.id }}">
                       <button
                         type="submit"
-                        class="underline text-sm"
+                        class="text-xs font-medium text-sky-500 hover:text-sky-600 underline underline-offset-2"
                       >
-                        Restore
+                        Wiederherstellen
                       </button>
                     </form>
                   </td>
@@ -253,9 +285,12 @@
           </table>
         </div>
       {% else %}
-        <div class="flex flex-col items-center justify-center py-16 text-gray-400 text-sm">
+        <div class="flex flex-col items-center justify-center py-14 text-center text-sm text-[var(--ink-muted)]">
           <div class="mb-3 text-4xl">📁</div>
-          <div>No versions yet.</div>
+          <div class="font-medium text-[var(--ink)] mb-1">Noch keine Versionen vorhanden.</div>
+          <p class="text-xs text-[var(--ink-muted)]">
+            Lade eine neue Version hoch, um die Historie dieses Dokuments aufzubauen.
+          </p>
         </div>
       {% endif %}
     </div>

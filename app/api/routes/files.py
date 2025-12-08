@@ -1,6 +1,8 @@
 # app/api/routes/files.py
 from __future__ import annotations
 
+from typing import List  # NEU: für doc_ids-Liste im Bulk-Endpoint
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -29,6 +31,7 @@ from app.utils.crypto_utils import decrypt_bytes, decrypt_text
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
 from app.models.document import Document
+from app.models.category import Category  # NEU: für Bulk-Zuweisung
 from app.repositories.document_repo import get_document_owned
 from app.services.version_service import (
     list_versions,
@@ -49,7 +52,7 @@ def extract_docx_text_from_bytes(data: bytes) -> str:
     """
     Extrahiert Text aus einer DOCX-Datei:
     - normale Absätze
-    - Tabellenzellen (typisch für Rechnungs- / Formularvorlagen)
+    - Tabellenzellen (typisch für Rechnungs- / Vertragsvorlagen)
 
     Layout geht verloren, aber der reine Text wird lesbar dargestellt.
     """
@@ -72,7 +75,7 @@ def extract_docx_text_from_bytes(data: bytes) -> str:
         if text:
             parts.append(text)
 
-    # 2) Tabellen (wichtig für Rechnungs-/Formularvorlagen)
+    # 2) Tabellen (wichtig für Vorlagen / Formulare)
     for table in docx_file.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -121,7 +124,7 @@ def detail(
 
 
 # -------------------------------------------------------------
-# VIEWER-SEITE (PDF im iframe oder Text/OCR/DOCX)
+# VIEWER-SEITE (PDF im pdf.js-Viewer oder Text/OCR/DOCX)
 # -------------------------------------------------------------
 @router.get("/{doc_id}/view")
 def document_view_page(
@@ -135,6 +138,7 @@ def document_view_page(
 
     - PDFs:
         werden über /documents/{id}/download?inline=1 im Browser angezeigt
+        (die HTML-Seite nutzt pdf.js, um alle Seiten zu rendern)
     - DOCX/TXT:
         Text wird aus Datei extrahiert (falls kein OCR-Text vorhanden)
     - andere:
@@ -207,7 +211,7 @@ def document_view_page(
     if (not is_pdf) and (not ocr_text) and file_bytes:
         try:
             if name_lower.endswith(".docx"):
-                # Word-Dokument: Text inkl. Tabellen
+                # Word-Dokument: Fließtext + Tabellen
                 text = extract_docx_text_from_bytes(file_bytes)
                 if text:
                     ocr_text = text
@@ -254,7 +258,7 @@ def download(
 ):
     """
     Liefert die Datei:
-    - inline=true  → Content-Disposition: inline  (für iframe-Vorschau)
+    - inline=true  → Content-Disposition: inline  (für iframe / pdf.js-Vorschau)
     - inline=false → Content-Disposition: attachment (klassischer Download)
     """
     doc = get_document_owned(db, doc_id, user.id)
@@ -351,6 +355,65 @@ def restore(
         return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
     except ValueError:
         raise HTTPException(status_code=404, detail="Not found")
+
+
+# -------------------------------------------------------------
+# BULK: Mehrere Dokumente einer Kategorie zuweisen
+# -------------------------------------------------------------
+@router.post("/bulk-assign-category")
+def bulk_assign_category(
+    category_id: int = Form(...),
+    doc_ids: List[int] = Form(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    """
+    Weist mehrere Dokumente (doc_ids) auf einmal einer Kategorie zu.
+
+    Annahmen:
+    - category_id gehört zum eingeloggten User
+    - nur Dokumente des eingeloggten Users werden geändert
+    """
+
+    # Kategorie validieren (nur Kategorien des Users)
+    category = (
+        db.query(Category)
+        .filter(
+            Category.id == category_id,
+            Category.user_id == user.id,
+        )
+        .first()
+    )
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    # Sicherstellen, dass überhaupt IDs angekommen sind
+    if not doc_ids:
+        # Kein Fatal Error → zurück zur Liste
+        return RedirectResponse(url="/documents?bulk=none", status_code=303)
+
+    # Dokumente des Users mit den IDs holen
+    docs = (
+        db.query(Document)
+        .filter(
+            Document.id.in_(doc_ids),
+            Document.owner_user_id == user.id,
+            Document.is_deleted == False,
+        )
+        .all()
+    )
+
+    if not docs:
+        return RedirectResponse(url="/documents?bulk=nodocs", status_code=303)
+
+    # Kategorie setzen
+    for d in docs:
+        d.category_id = category_id
+
+    db.commit()
+
+    # Zurück zur Übersicht mit kleinem Query-Flag für späteres Feedback
+    return RedirectResponse(url="/documents?bulk=ok", status_code=303)
 
 
 # -------------------------------------------------------------

@@ -1,12 +1,30 @@
-<!-- web/templates/verify_success.html -->
 {% extends "base.html" %}
+
+{% block title %}Verifizierung erfolgreich · SPKH{% endblock %}
+
 {% block content %}
-<div style="max-width:560px;margin:48px auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
-  <h1 style="margin:0 0 12px 0;font-size:24px;color:#065f46;">Verifizierung erfolgreich</h1>
-  <p>Dein Account ist aktiviert.</p>
-  <a href="/auth/login-web"
-     style="display:inline-block;margin-top:16px;padding:12px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
-    Zum Login
-  </a>
+<div class="max-w-md mx-auto mt-14 px-4">
+  <div class="rounded-2xl border border-emerald-200/70 dark:border-emerald-500/40 bg-white dark:bg-slate-900/80 shadow-sm px-6 py-5">
+    <div class="flex items-start gap-3">
+      <div class="mt-1 h-8 w-8 flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40">
+        ✓
+      </div>
+      <div>
+        <h1 class="text-lg font-semibold text-emerald-700 dark:text-emerald-300 mb-1">
+          Verifizierung erfolgreich
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          Dein Account wurde aktiviert. Du kannst dich jetzt im Dokumentenmanager anmelden.
+        </p>
+
+        <a
+          href="/auth/login-web"
+          class="mt-4 inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          Zum Login
+        </a>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
