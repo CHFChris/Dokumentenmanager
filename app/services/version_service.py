@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.repositories.document_repo import (
     get_document_owned,
-    list_versions_for_document,
     add_version,
     get_version_owned,
     set_ocr_text_for_document,  # <- NEU: OCR verschlüsselt setzen
@@ -16,6 +15,7 @@ from app.repositories.document_repo import (
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 from app.core.config import settings
 from app.services.ocr_service import ocr_and_clean  # <- NEU: OCR-Pipeline
+from app.models.document_version import DocumentVersion
 
 
 BASE_FILES_DIR = getattr(settings, "FILES_DIR", "./data/files")
@@ -25,12 +25,19 @@ def _user_dir(user_id: int) -> str:
     return os.path.join(BASE_FILES_DIR, str(user_id))
 
 
-def list_versions(db: Session, user_id: int, doc_id: int):
-    doc = get_document_owned(db, doc_id, user_id)
-    if not doc:
-        raise ValueError("NOT_FOUND_OR_FORBIDDEN")
-    vers = list_versions_for_document(db, doc_id, user_id)
-    return doc, vers
+def list_document_versions(db: Session, doc_id: int) -> list[DocumentVersion]:
+    """
+    Liefert alle Versionen eines Dokuments (neueste zuerst).
+    Wichtig:
+    - Spalte heißt document_id
+    - es wird .all() aufgerufen
+    """
+    return (
+        db.query(DocumentVersion)
+        .filter(DocumentVersion.document_id == doc_id)
+        .order_by(DocumentVersion.version_number.desc())
+        .all()
+    )
 
 
 def upload_new_version(
@@ -177,3 +184,12 @@ def restore_version(db: Session, user_id: int, doc_id: int, version_id: int):
         )
 
     return new_ver
+
+
+# Alias für alte Importe
+def list_versions(db: Session, doc_id: int):
+    """
+    Rückwärtskompatibler Alias für list_document_versions.
+    Wird z.B. noch aus app/api/routes/files.py importiert.
+    """
+    return list_document_versions(db, doc_id)

@@ -1,0 +1,147 @@
+{# app/web/templates/document_versions.html #}
+{% extends "base.html" %}
+{% block title %}Versionen · {{ doc.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto max-w-6xl py-6 px-4">
+
+  <a href="/documents/{{ doc.id }}" class="text-sm text-gray-500 inline-flex items-center mb-4">
+    &larr; Zurück zum Dokument
+  </a>
+
+  <h1 class="text-2xl font-semibold mb-1">
+    Versionen von {{ doc.name }}
+  </h1>
+  <p class="text-sm text-gray-500 mb-6">
+    Übersicht über alle gespeicherten Versionen dieses Dokuments.
+  </p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+    <!-- Kurzinfo zum Dokument -->
+    <div class="rounded-2xl border bg-white shadow-sm p-4 lg:col-span-1">
+      <h2 class="text-base font-semibold mb-3">Dokumentdetails</h2>
+      <dl class="text-sm text-gray-600 space-y-1">
+        <div class="flex justify-between">
+          <dt class="text-gray-500">Dateiname</dt>
+          <dd class="font-medium text-right truncate max-w-[180px]">
+            {{ doc.name }}
+          </dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-gray-500">Typ</dt>
+          <dd class="text-right">
+            {{ doc.ext or (doc.mime or "unbekannt") }}
+          </dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-gray-500">Aktuelle Größe</dt>
+          <dd class="text-right">
+            {% if doc.size >= 1024*1024 %}
+              {{ (doc.size/1024/1024)|round(2) }} MB
+            {% elif doc.size >= 1024 %}
+              {{ (doc.size/1024)|round(0) }} KB
+            {% else %}
+              {{ doc.size }} B
+            {% endif %}
+          </dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-gray-500">Hochgeladen am</dt>
+          <dd class="text-right">
+            {{ doc.created_at.strftime("%d.%m.%Y %H:%M") if doc.created_at else "-" }}
+          </dd>
+        </div>
+      </dl>
+
+      <div class="mt-4 space-y-2">
+        <a href="/documents/{{ doc.id }}/download"
+           class="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+          Aktuelle Version herunterladen
+        </a>
+        <a href="/documents/{{ doc.id }}"
+           class="inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Zur Detailansicht
+        </a>
+      </div>
+    </div>
+
+    <!-- Versionstabelle -->
+    <div class="rounded-2xl border bg-white shadow-sm p-4 lg:col-span-2">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold">Gespeicherte Versionen</h2>
+        <p class="text-xs text-gray-500">
+          Jede Version steht für einen gespeicherten Stand der Datei.
+        </p>
+      </div>
+
+      {% if versions and versions|length > 0 %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="border-b text-left text-xs text-gray-500">
+              <tr>
+                <th class="py-2 pr-4">Version</th>
+                <th class="py-2 pr-4">Größe</th>
+                <th class="py-2 pr-4">Erstellt am</th>
+                <th class="py-2 pr-4">Notiz</th>
+                <th class="py-2">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for v in versions %}
+                <tr class="border-b last:border-0">
+                  <td class="py-2 pr-4 font-medium">
+                    v{{ v.version_number or "?" }}
+                  </td>
+                  <td class="py-2 pr-4">
+                    {% if v.size_bytes >= 1024*1024 %}
+                      {{ (v.size_bytes/1024/1024)|round(2) }} MB
+                    {% elif v.size_bytes >= 1024 %}
+                      {{ (v.size_bytes/1024)|round(0) }} KB
+                    {% else %}
+                      {{ v.size_bytes }} B
+                    {% endif %}
+                  </td>
+                  <td class="py-2 pr-4">
+                    {% if v.created_at %}
+                      {{ v.created_at.strftime("%d.%m.%Y %H:%M") }}
+                    {% else %}
+                      &mdash;
+                    {% endif %}
+                  </td>
+                  <td class="py-2 pr-4">
+                    {{ v.note or "—" }}
+                  </td>
+                  <td class="py-2">
+                    <form
+                      method="post"
+                      action="/documents/{{ doc.id }}/restore-version-web"
+                      class="inline"
+                    >
+                      <input type="hidden" name="version_id" value="{{ v.id }}">
+                      <button
+                        type="submit"
+                        class="inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+                      >
+                        Diese Version wiederherstellen
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="flex flex-col items-center justify-center py-12 text-gray-400 text-sm">
+          <div class="mb-3 text-4xl">📁</div>
+          <div>Noch keine Versionen gespeichert.</div>
+          <div class="text-xs text-gray-500 mt-1">
+            Lade im Dokument-Detailbereich neue Versionen hoch, um Änderungen nachverfolgen zu können.
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

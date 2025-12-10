@@ -36,6 +36,7 @@ from app.services.document_service import (
     download_response,
     rename_document_service,
 )
+from app.services.version_service import list_document_versions
 
 # Repo-Funktionen (für Kategorien und Versionierung)
 from app.repositories.category_repo import list_categories_for_user
@@ -44,6 +45,7 @@ from app.repositories.document_repo import (
     list_versions_for_document,
     add_version,
     get_version_owned,
+    get_document_owned,
 )
 
 # Modelle
@@ -594,13 +596,17 @@ def documents_bulk_assign_category(
 # -------------------------------------------------------------
 @router.get("/documents/{doc_id}", response_class=HTMLResponse)
 def document_detail_page(
-    doc_id: int,
     request: Request,
+    doc_id: int,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    doc = get_document_detail(db, user.id, doc_id)
+    doc = get_document_owned(db, doc_id, user.id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
     categories = list_categories_for_user(db, user.id)
+    versions = list_document_versions(db, doc.id)
 
     return templates.TemplateResponse(
         "document_detail.html",
@@ -609,7 +615,7 @@ def document_detail_page(
             "user": user,
             "doc": doc,
             "categories": categories,
-            "active": "documents",
+            "versions": versions,
         },
     )
 
@@ -700,14 +706,16 @@ def file_delete_compat(
 # -------------------------------------------------------------
 @router.get("/documents/{doc_id}/versions", response_class=HTMLResponse)
 def document_versions_page(
-    doc_id: int,
     request: Request,
+    doc_id: int,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    doc = get_document_detail(db, user.id, doc_id)
-    db_versions = list_versions_for_document(db, doc_id, owner_id=user.id)
-    versions = _format_versions_list(db_versions)
+    doc = get_document_owned(db, doc_id, user.id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    versions = list_document_versions(db, doc.id)
 
     return templates.TemplateResponse(
         "document_versions.html",
@@ -716,7 +724,6 @@ def document_versions_page(
             "user": user,
             "doc": doc,
             "versions": versions,
-            "active": "documents",
         },
     )
 
@@ -770,7 +777,7 @@ def document_restore_version(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    note = f"Restore from v{getattr(ver, "version_number", "?")}"
+    note = f"Restore from v{getattr(ver, 'version_number', '?')}"
 
     add_version(
         db=db,
@@ -783,6 +790,7 @@ def document_restore_version(
     )
 
     return RedirectResponse(url=f"/documents/{doc_id}/versions", status_code=303)
+
 
 @router.get("/security-info", response_class=HTMLResponse)
 def security_info_page(
