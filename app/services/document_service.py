@@ -4,9 +4,9 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime
-from typing import BinaryIO, Optional, List, Dict
-from tempfile import NamedTemporaryFile
 from io import BytesIO
+from tempfile import NamedTemporaryFile
+from typing import BinaryIO, Optional, List, Dict
 
 import sqlalchemy as sa
 from fastapi import HTTPException
@@ -14,34 +14,32 @@ from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
 
 from app.core.config import settings
+from app.models.category import Category
 from app.models.document import Document
 from app.repositories.document_repo import (
-    # Dashboard
     count_documents_for_user,
-    storage_used_for_user,
+    create_document_with_version,
+    get_document_for_user,
+    get_document_owned as _get_document_owned_legacy,
     recent_uploads_count_week,
     recent_uploads_for_user,
-    # Documents
-    create_document_with_version,
+    set_ocr_text_for_document,
     soft_delete_document,
-    get_document_for_user,          # neue, einheitliche Getter-API
-    update_document_name_and_path,  # atomare DB-Aktualisierung
-    set_ocr_text_for_document,      # NEU: OCR-Text verschlüsselt speichern
-    # Legacy-Kompatibilität (nur für Wrapper unten verwendet):
-    get_document_owned as _get_document_owned_legacy,
+    storage_used_for_user,
+    update_document_name_and_path,
 )
 from app.schemas.document import DocumentListOut, DocumentOut
-from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
+from app.services.auto_tagging import suggest_categories_for_document
+from app.services.document_category_service import set_document_categories
 from app.services.ocr_service import ocr_and_clean
-from app.services.auto_tagging import suggest_category_for_document
 from app.utils.crypto_utils import decrypt_bytes
+from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
 # ------------------------------------------------------------
 # Konfiguration
 # ------------------------------------------------------------
 FILES_DIR = getattr(settings, "FILES_DIR", "./data/files")
 
-# sehr einfache Stopwort-Liste (de + en), für Tokenisierung
 SIMPLE_STOPWORDS = {
     "der", "die", "das", "und", "oder", "ein", "eine", "einer", "einem", "einen",
     "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "für",
@@ -50,17 +48,10 @@ SIMPLE_STOPWORDS = {
     "this", "that", "these", "those", "it", "its", "be", "was", "were", "are",
 }
 
-
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
 def _sanitize_display_name(name: str) -> str:
-    """
-    Bereinigt den vom User kommenden Anzeigenamen (für DB/UI).
-    - entfernt Pfadangaben
-    - ersetzt verbotene Zeichen
-    - begrenzt Länge (255)
-    """
     name = (name or "").strip()
     name = os.path.basename(name)
     bad = {"/", "\\", "\0"}
@@ -70,20 +61,12 @@ def _sanitize_display_name(name: str) -> str:
 
 
 def _uuid_disk_name_with_ext(original_name: str) -> str:
-    """
-    Erzeugt einen eindeutigen Dateinamen für die Festplatte:
-    <uuid>.<ext> (Extension aus Originalname, lowercased)
-    """
     _, ext = os.path.splitext(original_name or "")
     ext = ext.lower()
     return f"{uuid.uuid4().hex}{ext}"
 
 
 def _unique_target_path(base_dir: str, original_name_for_ext: str) -> tuple[str, str]:
-    """
-    Liefert (disk_name, target_path) für einen kollisionsfreien Zielpfad.
-    Nutzt UUID + Original-Extension.
-    """
     ensure_dir(base_dir)
     disk_name = _uuid_disk_name_with_ext(original_name_for_ext)
     target_path = os.path.join(base_dir, disk_name)
@@ -94,12 +77,6 @@ def _unique_target_path(base_dir: str, original_name_for_ext: str) -> tuple[str,
 
 
 def _tokenize(text: str) -> List[str]:
-    """
-    Sehr einfache Tokenisierung:
-    - lowercasing
-    - split auf whitespace
-    - Filter: Länge >= 3, kein reines Sonderzeichen, keine Stopwörter
-    """
     if not text:
         return []
     raw_tokens = text.lower().split()
@@ -117,11 +94,6 @@ def _tokenize(text: str) -> List[str]:
 
 
 def _score_document(title: str, body: str, query_tokens: List[str]) -> int:
-    """
-    Sehr einfache Relevanzbewertung:
-    - Vorkommen im Titel mit Gewicht 3
-    - Vorkommen im OCR-Text mit Gewicht 1
-    """
     if not query_tokens:
         return 0
 
@@ -135,6 +107,22 @@ def _score_document(title: str, body: str, query_tokens: List[str]) -> int:
         if tok in body_l:
             score += 1
     return score
+
+
+def _categories_to_string(doc: Document) -> Optional[str]:
+    cats = getattr(doc, "categories", None) or []
+    names = [c.name for c in cats if getattr(c, "name", None)]
+    return ", ".join(names) if names else None
+
+
+def _category_ids(doc: Document) -> List[int]:
+    cats = getattr(doc, "categories", None) or []
+    out: List[int] = []
+    for c in cats:
+        cid = getattr(c, "id", None)
+        if isinstance(cid, int):
+            out.append(cid)
+    return out
 
 
 # ------------------------------------------------------------
@@ -155,13 +143,7 @@ def dashboard_stats(db: Session, user_id: int) -> dict:
         .all()
     )
 
-    word_stats = [
-        {
-            "id": d.id,
-            "words": len((d.ocr_text or "").split()),
-        }
-        for d in most_words
-    ]
+    word_stats = [{"id": d.id, "words": len((d.ocr_text or "").split())} for d in most_words]
 
     return {
         "total": total,
@@ -187,9 +169,6 @@ def list_documents(
     mime_startswith: Optional[str] = None,
     only_with_ocr: bool = False,
 ) -> DocumentListOut:
-    """
-    Einfache Suche über Dateiname und OCR-Feld.
-    """
     query = (
         db.query(Document)
         .filter(
@@ -208,7 +187,14 @@ def list_documents(
         )
 
     if category_id is not None:
-        query = query.filter(Document.category_id == category_id)
+        query = (
+            query.join(Document.categories)
+            .filter(
+                Category.id == category_id,
+                Category.user_id == user_id,
+            )
+            .distinct()
+        )
 
     if created_from is not None:
         query = query.filter(Document.created_at >= created_from)
@@ -238,7 +224,9 @@ def list_documents(
             size=r.size_bytes,
             sha256="",
             created_at=getattr(r, "created_at", None),
-            category=(r.category.name if getattr(r, "category", None) else None),
+            category=_categories_to_string(r),
+            category_ids=_category_ids(r),
+            category_names=[c.name for c in (getattr(r, "categories", None) or [])],
         )
         for r in rows
     ]
@@ -287,7 +275,14 @@ def search_documents_advanced(
     )
 
     if category_id is not None:
-        base_query = base_query.filter(Document.category_id == category_id)
+        base_query = (
+            base_query.join(Document.categories)
+            .filter(
+                Category.id == category_id,
+                Category.user_id == user_id,
+            )
+            .distinct()
+        )
 
     if created_from is not None:
         base_query = base_query.filter(Document.created_at >= created_from)
@@ -322,7 +317,7 @@ def search_documents_advanced(
     )
 
     total = len(scored)
-    sliced = scored[offset : offset + limit]
+    sliced = scored[offset: offset + limit]
 
     items = [
         DocumentOut(
@@ -331,11 +326,9 @@ def search_documents_advanced(
             size=entry["doc"].size_bytes,
             sha256="",
             created_at=getattr(entry["doc"], "created_at", None),
-            category=(
-                entry["doc"].category.name
-                if getattr(entry["doc"], "category", None)
-                else None
-            ),
+            category=_categories_to_string(entry["doc"]),
+            category_ids=_category_ids(entry["doc"]),
+            category_names=[c.name for c in (getattr(entry["doc"], "categories", None) or [])],
         )
         for entry in sliced
     ]
@@ -377,13 +370,38 @@ def upload_document(
     db.commit()
     db.refresh(doc)
 
+    if category_id is not None:
+        cat = (
+            db.query(Category)
+            .filter(Category.user_id == user_id, Category.id == category_id)
+            .first()
+        )
+        if cat:
+            current = get_document_for_user(db, user_id, doc.id) or doc
+            existing_ids: List[int] = []
+            for c in (getattr(current, "categories", None) or []):
+                cid = getattr(c, "id", None)
+                if isinstance(cid, int):
+                    existing_ids.append(cid)
+
+            new_ids = list(dict.fromkeys(existing_ids + [cat.id]))
+
+            set_document_categories(
+                db,
+                doc_id=doc.id,
+                user_id=user_id,
+                category_ids=new_ids,
+            )
+
     return DocumentOut(
         id=doc.id,
         name=doc.filename,
         size=doc.size_bytes,
         sha256="",
         created_at=getattr(doc, "created_at", None),
-        category=(doc.category.name if getattr(doc, "category", None) else None),
+        category=_categories_to_string(doc),
+        category_ids=_category_ids(doc),
+        category_names=[c.name for c in (getattr(doc, "categories", None) or [])],
     )
 
 
@@ -397,24 +415,20 @@ def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
 
     return {
         "id": doc.id,
-            "name": doc.filename,
+        "name": doc.filename,
         "size": doc.size_bytes,
-        "sha256":"",
+        "sha256": "",
         "mime": doc.mime_type or "",
         "created_at": getattr(doc, "created_at", None),
         "storage_path": doc.storage_path,
-        "ext": (doc.filename.rsplit(".", 1)[-1].upper()) if "." in doc.filename else "FILE",
-        "category_id": getattr(doc, "category_id", None),
-        "category_name": getattr(doc.category, "name", None)
-        if getattr(doc, "category", None)
-        else None,
+        "ext": (doc.filename.rsplit(".", 1)[-1].upper()) if "." in (doc.filename or "") else "FILE",
+        "category_ids": _category_ids(doc),
+        "category_names": [c.name for c in (getattr(doc, "categories", None) or [])],
+        "category": _categories_to_string(doc),
     }
 
 
 def download_response(db: Session, user_id: int, doc_id: int) -> StreamingResponse:
-    """
-    Liefert eine StreamingResponse mit entschlüsselten Bytes.
-    """
     doc = get_document_for_user(db, user_id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -491,43 +505,34 @@ def remove_document(db: Session, user_id: int, doc_id: int) -> bool:
 
 
 # ------------------------------------------------------------
-# OCR + Auto-Kategorie für verschlüsselte Dateien
+# OCR + Auto-Kategorien (Top-N) fuer verschluesselte Dateien
 # ------------------------------------------------------------
 def run_ocr_and_auto_category(
     db: Session,
     user_id: int,
     doc: Document,
 ) -> None:
-    """
-    Führt OCR auf einer verschlüsselt gespeicherten Datei aus,
-    speichert den OCR-Text verschlüsselt in der DB und
-    weist optional automatisch eine Kategorie zu.
-    """
-
     if not doc.storage_path or not os.path.exists(doc.storage_path):
         print(f"[OCR] storage_path fehlt oder existiert nicht: {doc.storage_path}")
         return
 
-    print(f"[UPLOAD] Starte run_ocr_and_auto_category für Doc {doc.id}")
-    print(f"[OCR] Start für Doc {doc.id}, path={doc.storage_path}")
+    print(f"[UPLOAD] Starte run_ocr_and_auto_category fuer Doc {doc.id}")
+    print(f"[OCR] Start fuer Doc {doc.id}, path={doc.storage_path}")
 
-    # 1) Verschlüsselte Bytes lesen und entschlüsseln
     try:
         with open(doc.storage_path, "rb") as fh:
             encrypted = fh.read()
         decrypted = decrypt_bytes(encrypted)
-        print(f"[OCR] entschlüsselte Bytes: {len(decrypted)}")
+        print(f"[OCR] entschluesselte Bytes: {len(decrypted)}")
     except Exception as exc:
-        print(f"[OCR] Fehler beim Entschlüsseln: {exc!r}")
+        print(f"[OCR] Fehler beim Entschluesseln: {exc!r}")
         return
 
-    # 2) Suffix / Extension bestimmen (für DOCX/PDF-Parser)
     name_source = getattr(doc, "original_filename", None) or doc.filename or ""
     suffix = ""
     if "." in name_source:
         suffix = "." + name_source.rsplit(".", 1)[-1].lower()
 
-    # 3) Temporäre Datei mit Klartext-Inhalt – wichtig: delete=False + close()
     tmp = NamedTemporaryFile(suffix=suffix, delete=False)
     try:
         tmp.write(decrypted)
@@ -538,11 +543,10 @@ def run_ocr_and_auto_category(
 
     print(f"[OCR] Tempfile: {tmp_path}, suffix={suffix}")
 
-    # 4) OCR ausführen
     try:
         ocr_plain = ocr_and_clean(path=tmp_path, lang="deu+eng", dpi=300)
         ocr_plain = (ocr_plain or "").strip()
-        print(f"[OCR] Ergebnis-Länge: {len(ocr_plain)}")
+        print(f"[OCR] Ergebnis-Laenge: {len(ocr_plain)}")
     except Exception as exc:
         print(f"[OCR] Fehler in ocr_and_clean: {exc!r}")
         try:
@@ -551,7 +555,6 @@ def run_ocr_and_auto_category(
             pass
         return
     finally:
-        # Tempfile nach OCR wieder löschen
         try:
             os.unlink(tmp_path)
         except Exception:
@@ -561,7 +564,6 @@ def run_ocr_and_auto_category(
         print("[OCR] Kein Text erkannt, abbrechen")
         return
 
-    # 5) OCR-Text verschlüsselt speichern
     try:
         set_ocr_text_for_document(
             db=db,
@@ -569,39 +571,56 @@ def run_ocr_and_auto_category(
             doc_id=doc.id,
             ocr_plaintext=ocr_plain,
         )
-        print(f"[OCR] OCR-Text in DB gespeichert für Doc {doc.id}")
+        print(f"[OCR] OCR-Text in DB gespeichert fuer Doc {doc.id}")
     except Exception as exc:
         print(f"[OCR] Fehler beim Schreiben des OCR-Textes in die DB: {exc!r}")
         return
 
-    # 6) Kategorie vorschlagen (nur User-Kategorien)
     try:
-        cat = suggest_category_for_document(
+        cats = suggest_categories_for_document(
             db=db,
             user_id=user_id,
             ocr_plaintext=ocr_plain,
             min_score=1,
+            top_k=3,
         )
     except Exception as exc:
-        print(f"[OCR] Fehler bei suggest_category_for_document: {exc!r}")
+        print(f"[OCR] Fehler bei suggest_categories_for_document: {exc!r}")
         return
 
-    if not cat:
-        print("[OCR] Keine passende Kategorie gefunden")
+    if not cats:
+        print("[OCR] Keine Kategorie gefunden (Top-N)")
         return
 
-    print(f"[OCR] Auto-Kategorie gefunden: {cat.id} ({cat.name}) für Doc {doc.id}")
+    cat_ids = [c.id for c in cats if isinstance(getattr(c, "id", None), int)]
+    print(f"[OCR] Auto-Kategorien gefunden: {cat_ids} fuer Doc {doc.id}")
 
-    # 7) Kategorie setzen und speichern
-    doc.category_id = cat.id
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
-    print(f"[OCR] Kategorie {cat.id} an Doc {doc.id} gespeichert")
+    try:
+        current_doc = get_document_for_user(db, user_id, doc.id) or doc
+        existing_ids: List[int] = []
+        for c in (getattr(current_doc, "categories", None) or []):
+            cid = getattr(c, "id", None)
+            if isinstance(cid, int):
+                existing_ids.append(cid)
+
+        new_ids = list(dict.fromkeys(existing_ids + cat_ids))
+
+        set_document_categories(
+            db,
+            doc_id=doc.id,
+            user_id=user_id,
+            category_ids=new_ids,
+        )
+
+        print(f"[OCR] Kategorien {new_ids} an Doc {doc.id} gespeichert")
+    except Exception as exc:
+        print(f"[OCR] Fehler beim Speichern der Kategorien: {exc!r}")
+        db.rollback()
+        return
 
 
 # ------------------------------------------------------------
-# Legacy-Wrapper (rückwärtskompatibel)
+# Legacy-Wrapper (rueckwaertskompatibel)
 # ------------------------------------------------------------
 def get_owned_or_404(db: Session, user_id: int, doc_id: int):
     doc = get_document_for_user(db, user_id, doc_id)
