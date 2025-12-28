@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -72,7 +72,7 @@ def _score_keyword(token: str, count: int) -> float:
 
 
 # -------------------------------------------------------------------
-# 1) Kategorie aus OCR-Text vorschlagen (Auto-Kategorisierung)
+# 1) Kategorien aus OCR-Text vorschlagen (Auto-Kategorisierung)
 # -------------------------------------------------------------------
 def suggest_category_for_document(
     db: Session,
@@ -81,25 +81,44 @@ def suggest_category_for_document(
     min_score: int = 1,
 ) -> Optional[Category]:
     """
-    Bestimmt anhand des OCR-Textes eine passende Kategorie für den User.
+    Legacy: Bestimmt anhand des OCR-Textes genau 1 passende Kategorie.
+    """
+    cats = suggest_categories_for_document(
+        db=db,
+        user_id=user_id,
+        ocr_plaintext=ocr_plaintext,
+        min_score=min_score,
+        top_k=1,
+    )
+    return cats[0] if cats else None
 
-    Idee:
-    - OCR-Text in Tokens zerlegen
-    - Kategorie-Keywords ebenfalls tokenisieren
-    - Score = Anzahl der Keyword-Tokens, die im Dokument vorkommen
-      + leichte Fuzzy-Komponente:
-        * 'vertrag' matcht auch 'arbeitsvertrag', 'mietvertrag'
-    Domain-agnostisch – funktioniert für Geld, Verträge, Schule, Arzt, etc.
+
+def suggest_categories_for_document(
+    db: Session,
+    user_id: int,
+    ocr_plaintext: str,
+    min_score: int = 1,
+    top_k: int = 3,
+) -> List[Category]:
+    """
+    Neu: Liefert mehrere Kategorien (Top-K), absteigend nach Score.
+
+    Score-Logik ist identisch zur Legacy-Funktion:
+    - OCR-Text tokenisieren
+    - Kategorie-Keywords tokenisieren
+    - Score:
+      * exakter Token-Hit: +2
+      * fuzzy Prefix (kw_tok -> doc_token startswith kw_tok, ab Länge>=5): +1
     """
     text = (ocr_plaintext or "")
     if not text.strip():
         print("[AUTO_CAT_DEBUG] OCR-Text ist leer, keine Kategorie möglich.")
-        return None
+        return []
 
     doc_tokens = _tokenize(text)
     if not doc_tokens:
         print("[AUTO_CAT_DEBUG] Keine verwertbaren Tokens im OCR-Text.")
-        return None
+        return []
 
     doc_token_set = set(doc_tokens)
 
@@ -109,8 +128,7 @@ def suggest_category_for_document(
         .all()
     )
 
-    best_cat: Optional[Category] = None
-    best_score: int = 0
+    scored: List[Tuple[int, Category]] = []
     debug_rows: List[tuple[str, int, List[str]]] = []
 
     for cat in categories:
@@ -125,7 +143,6 @@ def suggest_category_for_document(
         if not raw_keywords:
             continue
 
-        # Keywords -> Token-Liste
         kw_tokens: List[str] = []
         for kw in raw_keywords:
             kw_tokens.extend(_tokenize(kw))
@@ -142,7 +159,6 @@ def suggest_category_for_document(
                 hits.append(kw_tok)
                 continue
 
-            # Fuzzy: Token-Stämme matchen (vertrag -> arbeitsvertrag)
             for dt in doc_token_set:
                 if len(kw_tok) >= 5 and dt.startswith(kw_tok):
                     score += 1
@@ -151,9 +167,8 @@ def suggest_category_for_document(
 
         debug_rows.append((cat.name, score, hits))
 
-        if score > best_score:
-            best_score = score
-            best_cat = cat
+        if score >= min_score:
+            scored.append((score, cat))
 
     if debug_rows:
         print("[AUTO_CAT_DEBUG] Scores pro Kategorie (Token-basiert + fuzzy):")
@@ -162,18 +177,23 @@ def suggest_category_for_document(
     else:
         print("[AUTO_CAT_DEBUG] Keine Kategorien mit Keywords gefunden.")
 
-    if best_cat is None or best_score < min_score:
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    picked = [c for _score, c in scored[: max(0, int(top_k))]]
+
+    if not picked:
+        best_score = max((s for s, _c in scored), default=0)
         print(
-            f"[AUTO_CAT_DEBUG] Keine Kategorie über Schwellwert: "
+            f"[AUTO_CAT_DEBUG] Keine Kategorie ueber Schwellwert: "
             f"best_score={best_score}, min_score={min_score}"
         )
-        return None
+        return []
 
     print(
-        f"[AUTO_CAT_DEBUG] Gewählte Kategorie: {best_cat.name} "
-        f"(score={best_score}, min_score={min_score})"
+        "[AUTO_CAT_DEBUG] Gewaehlte Kategorien: "
+        + ", ".join([f"{c.name}" for c in picked])
     )
-    return best_cat
+    return picked
 
 
 def guess_category_for_text(
@@ -219,12 +239,14 @@ def suggest_keywords_for_category(
     if not category:
         raise ValueError("Category not found")
 
+    # M2M: Dokumente, die Kategorie X enthalten
     docs: List[Document] = (
         db.query(Document)
         .filter(
             Document.owner_user_id == user_id,
-            Document.category_id == category_id,
+            Document.is_deleted == False,  # noqa: E712
             Document.ocr_text.isnot(None),
+            Document.categories.any(Category.id == category_id),
         )
         .all()
     )
@@ -269,7 +291,7 @@ def suggest_keywords_for_category(
 
     suggested: List[str] = [token for token, _s, _c in scored_tokens[:top_n]]
 
-    print(f"[KEYWORDS] Vorschläge für Kategorie {category_id}: {suggested}")
+    print(f"[KEYWORDS] Vorschlaege fuer Kategorie {category_id}: {suggested}")
 
     return CategoryKeywordSuggestionOut(
         category_id=category.id,

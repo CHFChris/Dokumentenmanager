@@ -7,6 +7,7 @@ from sqlalchemy import BigInteger, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+from app.models.document_categories import document_categories
 from app.utils.crypto_utils import encrypt_text, decrypt_text
 
 if TYPE_CHECKING:
@@ -23,7 +24,6 @@ class Category(Base):
         autoincrement=True,
     )
 
-    # muss zum Typ von users.id passen (nach deiner Migration: Integer)
     user_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -36,18 +36,17 @@ class Category(Base):
         nullable=False,
     )
 
-    # physische DB-Spalte bleibt "keywords"
-    # im Code heißt das Attribut _keywords (intern, verschlüsselt)
     _keywords: Mapped[Optional[str]] = mapped_column(
         "keywords",
         Text,
         nullable=True,
     )
 
-    # Beziehungen
+    # Many-to-Many: exklusiv (alte Single-Category Beziehung entfernt)
     documents: Mapped[List["Document"]] = relationship(
         "Document",
-        back_populates="category",
+        secondary=document_categories,
+        back_populates="categories",
         lazy="selectin",
     )
 
@@ -56,28 +55,17 @@ class Category(Base):
         lazy="selectin",
     )
 
-    # ---------------------------------------
-    # Property: arbeitet mit KLARTEXT
-    # ---------------------------------------
     @property
     def keywords(self) -> str:
-        """
-        Gibt die Keywords als Klartext zurück.
-        In der DB liegt verschlüsselter Text in self._keywords.
-        """
         if not self._keywords:
             return ""
         try:
             return decrypt_text(self._keywords)
         except Exception:
-            # Fallback: falls alte Daten noch unverschlüsselt sind
             return self._keywords
 
     @keywords.setter
     def keywords(self, value: str) -> None:
-        """
-        Nimmt Klartext entgegen und speichert verschlüsselt in self._keywords.
-        """
         text = (value or "").strip()
         if not text:
             self._keywords = None
