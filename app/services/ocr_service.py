@@ -2,117 +2,72 @@
 from __future__ import annotations
 
 import os
-from typing import List
 
-from PyPDF2 import PdfReader
-from PIL import Image
-import pytesseract
-from docx import Document as DocxDocument
+from app.services.ocr_analysis import clean_text, run_ocr_on_file
 
 
-def _clean_text(text: str) -> str:
-    if not text:
-        return ""
-    # ganz einfache Bereinigung
-    return text.replace("\r", "\n").strip()
-
-
-# ------------------------------------------------------------
-# PDF
-# ------------------------------------------------------------
-def extract_text_from_pdf(path: str) -> str:
+def extract_text_from_pdf(path: str, lang: str = "deu+eng", dpi: int = 300) -> str:
+    # Erst versuchen: Text-Layer (falls vorhanden), sonst OCR-Fallback
     try:
-        reader = PdfReader(path)
-        parts: List[str] = []
-        for page in reader.pages:
-            try:
-                t = page.extract_text() or ""
-                if t.strip():
-                    parts.append(t)
-            except Exception as e:
-                print(f"[OCR] Fehler beim Lesen einer PDF-Seite: {e}")
-        text = "\n".join(parts)
-        print(f"[OCR] PDF-Textlänge: {len(text)}")
-        return _clean_text(text)
-    except Exception as e:
-        print(f"[OCR] PDF konnte nicht gelesen werden: {e}")
-        return ""
+        from pypdf import PdfReader  # type: ignore
+    except Exception:
+        PdfReader = None  # type: ignore
+
+    if PdfReader is not None:
+        try:
+            reader = PdfReader(path)
+            text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+            if text:
+                return text
+        except Exception:
+            pass
+
+    return run_ocr_on_file(path, lang=lang, dpi=dpi)
 
 
-# ------------------------------------------------------------
-# Bilder (PNG / JPG / etc.)
-# ------------------------------------------------------------
-def extract_text_from_image(path: str, lang: str = "deu+eng") -> str:
-    try:
-        img = Image.open(path)
-        text = pytesseract.image_to_string(img, lang=lang)
-        print(f"[OCR] IMAGE-Textlänge: {len(text)}")
-        return _clean_text(text)
-    except Exception as e:
-        print(f"[OCR] Bild-OCR fehlgeschlagen: {e}")
-        return ""
-
-
-# ------------------------------------------------------------
-# DOCX
-# ------------------------------------------------------------
 def extract_text_from_docx(path: str) -> str:
-    """
-    Liest Text aus einem echten DOCX:
-    - normale Absätze
-    - Text in Tabellenzellen
-    """
     try:
-        doc = DocxDocument(path)
-    except Exception as e:
-        print(f"[OCR] DOCX konnte nicht geöffnet werden: {e}")
-        return ""
+        from docx import Document as DocxDocument  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"python-docx fehlt oder kann nicht importiert werden: {exc!r}") from exc
 
-    parts: List[str] = []
+    doc = DocxDocument(path)
+    parts: list[str] = []
 
-    # 1) Normale Absätze
     for p in doc.paragraphs:
-        txt = p.text or ""
-        if txt.strip():
-            parts.append(txt)
+        if p.text:
+            parts.append(p.text)
 
-    # 2) Tabellen
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                for p in cell.paragraphs:
-                    txt = p.text or ""
-                    if txt.strip():
-                        parts.append(txt)
+                t = (cell.text or "").strip()
+                if t:
+                    parts.append(t)
 
-    text = "\n".join(parts)
-    print(f"[OCR] DOCX-Textlänge: {len(text)}")
-    return _clean_text(text)
+    return "\n".join(parts).strip()
 
 
-# ------------------------------------------------------------
-# zentrale Funktion, die von document_service benutzt wird
-# ------------------------------------------------------------
+# NEU: fehlt, wird von debug_ocr.py importiert
+def extract_text_from_image(path: str, lang: str = "deu+eng") -> str:
+    # raw OCR (ohne clean), damit debug route exakt zeigt, was OCR liefert
+    return run_ocr_on_file(path, lang=lang)
+
+
 def ocr_and_clean(path: str, lang: str = "deu+eng", dpi: int = 300) -> str:
-    """
-    Wählt je nach Dateiendung die passende Strategie.
-    Wird von run_ocr_and_auto_category() aufgerufen.
-    """
     ext = os.path.splitext(path)[1].lower()
-    print(f"[OCR] ocr_and_clean() für '{path}' mit Ext '{ext}'")
-
-    text = ""
 
     if ext == ".pdf":
-        text = extract_text_from_pdf(path)
-    elif ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"):
-        text = extract_text_from_image(path, lang=lang)
-    elif ext == ".docx":
-        text = extract_text_from_docx(path)
-    else:
-        print(f"[OCR] Unbekannter oder nicht unterstützter Typ: {ext}")
-        return ""
+        raw = extract_text_from_pdf(path, lang=lang, dpi=dpi)
+        return clean_text(raw)
 
-    text = _clean_text(text)
-    print(f"[OCR] ocr_and_clean() liefert Länge {len(text)}")
-    return text
+    if ext == ".docx":
+        raw = extract_text_from_docx(path)
+        return clean_text(raw)
+
+    if ext in {".txt", ".md", ".csv", ".log"}:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return clean_text(f.read())
+
+    raw = run_ocr_on_file(path, lang=lang, dpi=dpi)
+    return clean_text(raw)

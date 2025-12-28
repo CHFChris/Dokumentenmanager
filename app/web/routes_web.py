@@ -18,15 +18,14 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
 from app.core.config import settings
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
-from app.utils.crypto_utils import decrypt_text  # NEU: für Volltextsuche im OCR
+from app.utils.crypto_utils import decrypt_text
 
-# Services (zentrierte Logik)
 from app.services.document_service import (
     dashboard_stats,
     list_documents,
@@ -38,7 +37,11 @@ from app.services.document_service import (
 )
 from app.services.version_service import list_document_versions
 
-# Repo-Funktionen (für Kategorien und Versionierung)
+from app.services.document_category_service import (
+    set_document_categories,
+    bulk_set_document_categories,
+)
+
 from app.repositories.category_repo import list_categories_for_user
 from app.repositories.document_repo import (
     get_document_for_user,
@@ -48,16 +51,11 @@ from app.repositories.document_repo import (
     get_document_owned,
 )
 
-# Modelle
 from app.models.category import Category
-from app.models.document import Document  # für /documents/{document_id}/view
+from app.models.document import Document
 
-# Auto-Tagging für Kategorie-Keyword-Vorschläge
 from app.services.auto_tagging import suggest_keywords_for_category
 
-# -------------------------------------------------------------
-# Router & Templates
-# -------------------------------------------------------------
 router = APIRouter()
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -66,9 +64,6 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 FILES_DIR = getattr(settings, "FILES_DIR", "./data/files")
 
 
-# -------------------------------------------------------------
-# Helper für Versionen
-# -------------------------------------------------------------
 def _user_dir(user_id: int) -> str:
     p = os.path.join(FILES_DIR, str(user_id))
     ensure_dir(p)
@@ -110,17 +105,11 @@ def _format_versions_list(db_versions) -> List[Dict[str, Any]]:
     return out
 
 
-# -------------------------------------------------------------
-# ROOT → Dashboard
-# -------------------------------------------------------------
 @router.get("/", include_in_schema=False)
 def root_to_dashboard() -> RedirectResponse:
     return RedirectResponse(url="/dashboard", status_code=302)
 
 
-# -------------------------------------------------------------
-# DASHBOARD (KPIs + letzte Uploads)
-# -------------------------------------------------------------
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(
     request: Request,
@@ -146,9 +135,6 @@ def dashboard(
     )
 
 
-# -------------------------------------------------------------
-# Kategorie-Übersicht für Schlagwörter
-# -------------------------------------------------------------
 @router.get("/category-keywords", response_class=HTMLResponse)
 def category_keywords_page(
     request: Request,
@@ -168,9 +154,6 @@ def category_keywords_page(
     )
 
 
-# -------------------------------------------------------------
-# UPLOAD (mit Kategorien)
-# -------------------------------------------------------------
 @router.get("/upload", response_class=HTMLResponse)
 def upload_page(
     request: Request,
@@ -193,23 +176,29 @@ def upload_page(
 async def upload_web(
     request: Request,
     file: UploadFile = File(...),
-    category_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
     try:
-        try:
-            cat_id: Optional[int] = int(category_id) if category_id else None
-        except ValueError:
-            cat_id = None
+        form = await request.form()
+        raw_ids = form.getlist("category_ids")
+        category_ids = [int(x) for x in raw_ids if str(x).isdigit()]
 
-        upload_document(
+        doc = upload_document(
             db=db,
             user_id=user.id,
             original_name=file.filename,
             file_obj=file.file,
-            category_id=cat_id,
+            category_id=None,
         )
+
+        set_document_categories(
+            db,
+            doc_id=doc.id,
+            user_id=user.id,
+            category_ids=category_ids,
+        )
+
         return RedirectResponse(url="/documents", status_code=303)
     except Exception as ex:
         categories = list_categories_for_user(db, user.id)
@@ -226,9 +215,6 @@ async def upload_web(
         )
 
 
-# -------------------------------------------------------------
-# Kategorie-Detailseite mit Keyword-Empfehlungen
-# -------------------------------------------------------------
 @router.get("/categories/{category_id}", response_class=HTMLResponse)
 def category_detail(
     category_id: int,
@@ -245,11 +231,7 @@ def category_detail(
         .first()
     )
     if not category:
-        return templates.TemplateResponse(
-            "404.html",
-            {"request": request},
-            status_code=404,
-        )
+        return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
 
     suggestions = suggest_keywords_for_category(
         db=db,
@@ -289,25 +271,15 @@ def category_update_keywords_web(
         .first()
     )
     if not category:
-        return templates.TemplateResponse(
-            "404.html",
-            {"request": request},
-            status_code=404,
-        )
+        return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
 
     category.keywords = ", ".join(cleaned) if cleaned else None
     db.add(category)
     db.commit()
 
-    return RedirectResponse(
-        url=f"/categories/{category_id}",
-        status_code=303,
-    )
+    return RedirectResponse(url=f"/categories/{category_id}", status_code=303)
 
 
-# -------------------------------------------------------------
-# Kategorien: anlegen / umbenennen / löschen (Web)
-# -------------------------------------------------------------
 @router.post("/categories/create-web", include_in_schema=False)
 def category_create_web(
     name: str = Form(...),
@@ -320,10 +292,7 @@ def category_create_web(
 
     exists = (
         db.query(Category)
-        .filter(
-            Category.user_id == user.id,
-            Category.name == name_clean,
-        )
+        .filter(Category.user_id == user.id, Category.name == name_clean)
         .first()
     )
     if exists:
@@ -349,10 +318,7 @@ def category_rename_web(
 
     category = (
         db.query(Category)
-        .filter(
-            Category.id == category_id,
-            Category.user_id == user.id,
-        )
+        .filter(Category.id == category_id, Category.user_id == user.id)
         .first()
     )
     if not category:
@@ -385,23 +351,19 @@ def category_delete_web(
 ):
     category = (
         db.query(Category)
-        .filter(
-            Category.id == category_id,
-            Category.user_id == user.id,
-        )
+        .filter(Category.id == category_id, Category.user_id == user.id)
         .first()
     )
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    (
-        db.query(Document)
-        .filter(
-            Document.owner_user_id == user.id,
-            Document.category_id == category_id,
+    legacy_col = getattr(Document, "category_id", None)
+    if legacy_col is not None:
+        (
+            db.query(Document)
+            .filter(Document.owner_user_id == user.id, legacy_col == category_id)
+            .update({"category_id": None})
         )
-        .update({"category_id": None})
-    )
 
     db.delete(category)
     db.commit()
@@ -409,93 +371,75 @@ def category_delete_web(
     return RedirectResponse(url="/documents", status_code=303)
 
 
-# -------------------------------------------------------------
-# DOCUMENTS – Liste & Suche (mit Kategorie-Filter + Typ + Zeitraum + Volltext)
-# -------------------------------------------------------------
 @router.get("/documents", response_class=HTMLResponse)
 def documents_page(
     request: Request,
     q: Optional[str] = None,
     category_id: Optional[str] = Query(None),
-    filetype: Optional[str] = Query(None),      # Dateityp-Filter (pdf, docx, ...)
-    date_from: Optional[str] = Query(None),     # Von-Datum (YYYY-MM-DD)
-    date_to: Optional[str] = Query(None),       # Bis-Datum (YYYY-MM-DD)
+    filetype: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    # Kategorie-Filter
     try:
         cat_id: Optional[int] = int(category_id) if category_id else None
     except ValueError:
         cat_id = None
 
-    # Basisliste: ohne Textsuche, nur User + Kategorie
-    result = list_documents(
-        db=db,
-        user_id=user.id,
-        q=None,          # eigene Textsuche unten
-        limit=200,
-        offset=0,
-        category_id=cat_id,
+    query = (
+        db.query(Document)
+        .options(selectinload(Document.categories))
+        .filter(
+            Document.owner_user_id == user.id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .order_by(Document.id.desc())
     )
-    docs = result.items if hasattr(result, "items") else result
-    filtered_docs = list(docs)
 
-    # ---------------------------------------------------------
-    # 1) Textsuche: Dateiname ODER OCR-Inhalt
-    # ---------------------------------------------------------
+    if cat_id is not None:
+        query = (
+            query.join(Document.categories)
+            .filter(Category.id == cat_id, Category.user_id == user.id)
+            .distinct()
+        )
+
+    docs_orm: List[Document] = query.limit(200).all()
+    filtered_docs_orm: List[Document] = list(docs_orm)
+
     search_term = (q or "").strip()
     if search_term:
         term_lower = search_term.lower()
-
-        # OCR-Dokumente des Users holen (ORM-Modelle)
-        ocr_docs = (
-            db.query(Document)
-            .filter(
-                Document.owner_user_id == user.id,
-                Document.is_deleted == False,
-                Document.ocr_text.isnot(None),
-            )
-            .all()
-        )
-
-        matching_ids = set()
-        for orm_doc in ocr_docs:
-            enc = orm_doc.ocr_text
-            if not enc:
-                continue
-            try:
-                plain = decrypt_text(enc)
-            except Exception:
-                plain = enc
-            if plain and term_lower in plain.lower():
-                matching_ids.add(orm_doc.id)
-
-        new_docs = []
-        for d in filtered_docs:
-            name_lower = (getattr(d, "name", "") or "").lower()
+        new_list: List[Document] = []
+        for d in filtered_docs_orm:
+            name_lower = (getattr(d, "filename", "") or "").lower()
             name_match = term_lower in name_lower
-            content_match = d.id in matching_ids
+
+            content_match = False
+            enc = getattr(d, "ocr_text", None)
+            if enc:
+                try:
+                    plain = decrypt_text(enc)
+                except Exception:
+                    plain = enc
+                try:
+                    content_match = bool(plain) and term_lower in str(plain).lower()
+                except Exception:
+                    content_match = False
+
             if name_match or content_match:
-                new_docs.append(d)
+                new_list.append(d)
+        filtered_docs_orm = new_list
 
-        filtered_docs = new_docs
-
-    # ---------------------------------------------------------
-    # 2) Dateityp-Filter (z. B. pdf, docx, jpg)
-    # ---------------------------------------------------------
     if filetype:
         ext = filetype.lower().lstrip(".")
-        new_docs = []
-        for d in filtered_docs:
-            base_name = (getattr(d, "name", "") or "").lower()
+        new_list: List[Document] = []
+        for d in filtered_docs_orm:
+            base_name = (getattr(d, "filename", "") or "").lower()
             if base_name.endswith("." + ext):
-                new_docs.append(d)
-        filtered_docs = new_docs
+                new_list.append(d)
+        filtered_docs_orm = new_list
 
-    # ---------------------------------------------------------
-    # 3) Zeitraum-Filter (created_at zwischen date_from und date_to)
-    # ---------------------------------------------------------
     def _parse_date(s: Optional[str]):
         if not s:
             return None
@@ -508,8 +452,8 @@ def documents_page(
     dt = _parse_date(date_to)
 
     if df or dt:
-        new_docs = []
-        for d in filtered_docs:
+        new_list: List[Document] = []
+        for d in filtered_docs_orm:
             created = getattr(d, "created_at", None)
             if not created:
                 continue
@@ -518,8 +462,19 @@ def documents_page(
                 continue
             if dt and created_date > dt:
                 continue
-            new_docs.append(d)
-        filtered_docs = new_docs
+            new_list.append(d)
+        filtered_docs_orm = new_list
+
+    filtered_docs = [
+        {
+            "id": d.id,
+            "name": getattr(d, "filename", None) or "",
+            "size": getattr(d, "size_bytes", 0) or 0,
+            "created_at": getattr(d, "created_at", None),
+            "categories": list(getattr(d, "categories", None) or []),
+        }
+        for d in filtered_docs_orm
+    ]
 
     categories = list_categories_for_user(db, user.id)
 
@@ -540,60 +495,33 @@ def documents_page(
     )
 
 
-# -------------------------------------------------------------
-# BULK: Mehrere Dokumente einer Kategorie zuweisen (Web)
-# -------------------------------------------------------------
 @router.post("/documents/bulk-assign-category", include_in_schema=False)
-def documents_bulk_assign_category(
-    category_id: int = Form(...),
-    doc_ids: List[int] = Form(...),
+async def documents_bulk_assign_category(
+    request: Request,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    """
-    Weist mehrere Dokumente (doc_ids) auf einmal einer Kategorie zu.
-    - Nur Kategorien des aktuellen Users
-    - Nur Dokumente des aktuellen Users, die nicht gelöscht sind
-    """
+    form = await request.form()
 
-    category = (
-        db.query(Category)
-        .filter(
-            Category.id == category_id,
-            Category.user_id == user.id,
-        )
-        .first()
-    )
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
+    raw_docs = form.getlist("doc_ids")
+    raw_cats = form.getlist("category_ids")
+
+    doc_ids = [int(x) for x in raw_docs if str(x).isdigit()]
+    category_ids = [int(x) for x in raw_cats if str(x).isdigit()]
 
     if not doc_ids:
-        return RedirectResponse(url="/documents?bulk=none", status_code=303)
-
-    docs = (
-        db.query(Document)
-        .filter(
-            Document.id.in_(doc_ids),
-            Document.owner_user_id == user.id,
-            Document.is_deleted == False,
-        )
-        .all()
-    )
-
-    if not docs:
         return RedirectResponse(url="/documents?bulk=nodocs", status_code=303)
 
-    for d in docs:
-        d.category_id = category_id
-
-    db.commit()
+    bulk_set_document_categories(
+        db,
+        doc_ids=doc_ids,
+        user_id=user.id,
+        category_ids=category_ids,
+    )
 
     return RedirectResponse(url="/documents?bulk=ok", status_code=303)
 
 
-# -------------------------------------------------------------
-# DOCUMENT DETAIL + Basis-Aktionen
-# -------------------------------------------------------------
 @router.get("/documents/{doc_id}", response_class=HTMLResponse)
 def document_detail_page(
     request: Request,
@@ -608,6 +536,9 @@ def document_detail_page(
     categories = list_categories_for_user(db, user.id)
     versions = list_document_versions(db, doc.id)
 
+    # 5.1: current_category_ids an Template geben
+    current_category_ids = [c.id for c in (getattr(doc, "categories", None) or [])]
+
     return templates.TemplateResponse(
         "document_detail.html",
         {
@@ -616,11 +547,11 @@ def document_detail_page(
             "doc": doc,
             "categories": categories,
             "versions": versions,
+            "current_category_ids": current_category_ids,
         },
     )
 
 
-# Neue Detailseite: /documents/{document_id}/view
 @router.get("/documents/{document_id}/view", response_class=HTMLResponse)
 def document_view_page(
     document_id: int,
@@ -643,6 +574,31 @@ def document_view_page(
     )
 
 
+@router.post("/documents/{doc_id}/set-categories-web", include_in_schema=False)
+async def document_set_categories(
+    request: Request,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    doc = get_document_for_user(db, user.id, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    form = await request.form()
+    raw_ids = form.getlist("category_ids")
+    category_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+
+    set_document_categories(
+        db,
+        doc_id=doc_id,
+        user_id=user.id,
+        category_ids=category_ids,
+    )
+
+    return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
+
+
 @router.post("/documents/{doc_id}/set-category-web", include_in_schema=False)
 def document_set_category(
     doc_id: int,
@@ -654,9 +610,14 @@ def document_set_category(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    doc.category_id = category_id if category_id else None
-    db.add(doc)
-    db.commit()
+    category_ids = [int(category_id)] if category_id else []
+
+    set_document_categories(
+        db,
+        doc_id=doc_id,
+        user_id=user.id,
+        category_ids=category_ids,
+    )
 
     return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
 
@@ -701,9 +662,6 @@ def file_delete_compat(
     return RedirectResponse(url="/documents", status_code=303)
 
 
-# -------------------------------------------------------------
-# DOCUMENT VERSIONS – Liste, Upload, Restore
-# -------------------------------------------------------------
 @router.get("/documents/{doc_id}/versions", response_class=HTMLResponse)
 def document_versions_page(
     request: Request,

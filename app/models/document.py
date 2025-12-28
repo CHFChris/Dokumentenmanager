@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 
 from app.db.database import Base
+from app.models.document_categories import document_categories
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -27,9 +28,6 @@ if TYPE_CHECKING:
 class Document(Base):
     __tablename__ = "documents"
 
-    # ------------------------------------------------------------
-    # Core
-    # ------------------------------------------------------------
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
     owner_user_id: Mapped[int] = mapped_column(
@@ -39,28 +37,12 @@ class Document(Base):
         index=True,
     )
 
-    # ------------------------------------------------------------
-    # Struktur (optional)
-    # ------------------------------------------------------------
     folder_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
-    category_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger,
-        ForeignKey("categories.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-
-    # ------------------------------------------------------------
-    # Datei-Infos
-    # ------------------------------------------------------------
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
 
-    original_filename: Mapped[Optional[str]] = mapped_column(
-        String(255),
-        nullable=True,
-    )
+    original_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     stored_name: Mapped[Optional[str]] = mapped_column(
         String(64),
@@ -70,30 +52,18 @@ class Document(Base):
 
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
-    checksum_sha256: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        nullable=True,
-    )
+    checksum_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
-    # ------------------------------------------------------------
-    # OCR / KI
-    # ------------------------------------------------------------
     ocr_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # ------------------------------------------------------------
-    # Speicher-Provider
-    # ------------------------------------------------------------
     storage_provider_id: Mapped[int] = mapped_column(
         SmallInteger,
         nullable=False,
         default=1,
     )
 
-    # ------------------------------------------------------------
-    # Flags & Zeit
-    # ------------------------------------------------------------
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -102,9 +72,6 @@ class Document(Base):
         nullable=False,
     )
 
-    # ------------------------------------------------------------
-    # Beziehungen
-    # ------------------------------------------------------------
     owner: Mapped["User"] = relationship(
         "User",
         back_populates="documents",
@@ -118,14 +85,14 @@ class Document(Base):
         passive_deletes=True,
     )
 
-    category: Mapped[Optional["Category"]] = relationship(
+    # Many-to-Many Kategorien (ersetzt alte Single-Category Beziehung)
+    categories: Mapped[List["Category"]] = relationship(
         "Category",
+        secondary=document_categories,
         back_populates="documents",
+        lazy="selectin",
     )
 
-    # ------------------------------------------------------------
-    # Kompatibilitäts-Aliasse (Dateiinformationen)
-    # ------------------------------------------------------------
     @property
     def name(self) -> str:
         return self.filename
@@ -158,9 +125,6 @@ class Document(Base):
     def sha256_hash(self, value: Optional[str]) -> None:
         self.checksum_sha256 = value
 
-    # ------------------------------------------------------------
-    # Kompatibilitäts-Aliasse (User / Owner)
-    # ------------------------------------------------------------
     @property
     def user_id(self) -> int:
         return self.owner_user_id
@@ -177,12 +141,5 @@ class Document(Base):
     def user(self, value: "User") -> None:
         self.owner = value
 
-    # ------------------------------------------------------------
-    # Debug
-    # ------------------------------------------------------------
     def __repr__(self) -> str:
-        return (
-            f"<Document id={self.id} "
-            f"filename={self.filename!r} "
-            f"size={self.size_bytes}B>"
-        )
+        return f"<Document id={self.id} filename={self.filename!r} size={self.size_bytes}B>"

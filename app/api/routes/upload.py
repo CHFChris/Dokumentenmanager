@@ -1,4 +1,6 @@
 # app/api/routes/upload.py
+from __future__ import annotations
+
 from typing import Final, Optional
 
 import os
@@ -16,6 +18,7 @@ from app.utils.files import ensure_dir
 from app.utils.crypto_utils import encrypt_bytes, compute_integrity_tag
 from app.repositories.document_repo import create_document_with_version
 from app.services.document_service import run_ocr_and_auto_category  # wichtig
+from app.services.document_category_service import set_document_categories  # NEU
 
 router = APIRouter(prefix="", tags=["upload"])
 
@@ -29,23 +32,26 @@ ALLOWED_MIME: Final[set[str]] = (
 FILES_DIR: Final[str] = getattr(settings, "FILES_DIR", "./data/files")
 
 
-def _parse_category_id(raw: Optional[str]) -> Optional[int]:
-    if raw is None:
-        return None
-    raw = raw.strip()
+def _parse_category_ids(raw: Optional[str]) -> list[int]:
     if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
+        return []
+    out: list[int] = []
+    for part in raw.split(","):
+        part = (part or "").strip()
+        if not part:
+            continue
+        try:
+            out.append(int(part))
+        except ValueError:
+            continue
+    return list(dict.fromkeys(out))
 
 
 async def _handle_upload_common(
     db: Session,
     user: CurrentUser,
     file: UploadFile,
-    category_id: Optional[int] = None,
+    category_ids: Optional[str] = None,
 ):
     if not file.filename:
         raise HTTPException(status_code=400, detail="filename is missing")
@@ -73,7 +79,7 @@ async def _handle_upload_common(
             detail=f"file too large (>{MAX_UPLOAD_MB} MB)",
         )
 
-    # NEU: HMAC statt SHA256
+    # HMAC statt SHA256 (Integrität)
     sha256_hex = compute_integrity_tag(raw_bytes)
 
     # interner Name
@@ -87,8 +93,8 @@ async def _handle_upload_common(
     ensure_dir(user_dir)
     target_path = os.path.join(user_dir, stored_name)
 
-    with open(target_path, "wb") as out:
-        out.write(encrypted_bytes)
+    with open(target_path, "wb") as out_f:
+        out_f.write(encrypted_bytes)
 
     original_name = os.path.basename(file.filename)
 
@@ -109,14 +115,17 @@ async def _handle_upload_common(
     if hasattr(doc, "stored_name"):
         doc.stored_name = stored_name
 
-    if category_id is not None and hasattr(doc, "category_id"):
-        doc.category_id = category_id
-
     db.add(doc)
     db.commit()
     db.refresh(doc)
 
-    # OCR + Auto-Kategorie
+    # NEU: Many-to-Many Kategorien manuell setzen (ohne category_id)
+    ids = _parse_category_ids(category_ids)
+    if ids:
+        set_document_categories(db, doc_id=doc.id, user_id=user.id, category_ids=ids)
+        db.refresh(doc)
+
+    # OCR + Auto-Kategorien (Top-N) -> ergänzt später weitere Kategorien
     try:
         print(f"[UPLOAD] Starte run_ocr_and_auto_category für Doc {doc.id}")
         run_ocr_and_auto_category(
@@ -134,29 +143,30 @@ async def _handle_upload_common(
 @router.post("/upload", response_model=DocumentOut, status_code=200)
 async def upload_file(
     file: UploadFile = File(...),
-    category_id: Optional[str] = Form(None),
+    category_ids: Optional[str] = Form(None),  # NEU: "1,2,3"
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    cat_id_int = _parse_category_id(category_id)
-    doc = await _handle_upload_common(db, user, file, category_id=cat_id_int)
+    doc = await _handle_upload_common(db, user, file, category_ids=category_ids)
 
     return DocumentOut(
         id=doc.id,
         name=doc.filename,
         size=doc.size_bytes,
         sha256="",
+        created_at=getattr(doc, "created_at", None),
+        category=None,
+        category_ids=[c.id for c in (getattr(doc, "categories", None) or []) if isinstance(getattr(c, "id", None), int)],
+        category_names=[c.name for c in (getattr(doc, "categories", None) or []) if getattr(c, "name", None)],
     )
 
 
 @router.post("/upload-web")
 async def upload_web(
     file: UploadFile = File(...),
-    category_id: Optional[str] = Form(None),
+    category_ids: Optional[str] = Form(None),  # NEU: "1,2,3"
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    cat_id_int = _parse_category_id(category_id)
-    await _handle_upload_common(db, user, file, category_id=cat_id_int)
-
+    await _handle_upload_common(db, user, file, category_ids=category_ids)
     return RedirectResponse(url="/upload", status_code=303)

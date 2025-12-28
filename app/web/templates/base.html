@@ -478,6 +478,22 @@
     })();
   </script>
 
+  <!-- no-ctrl-multi: Multi-Select ohne STRG -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll("select[multiple].no-ctrl-multi").forEach((sel) => {
+        sel.addEventListener("mousedown", (e) => {
+          const opt = e.target;
+          if (opt && opt.tagName === "OPTION") {
+            e.preventDefault();
+            opt.selected = !opt.selected;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        });
+      });
+    });
+  </script>
+
   {% block body_end %}{% endblock %}
 </body>
 </html>

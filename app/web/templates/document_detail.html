@@ -107,7 +107,7 @@
       </div>
     </div>
 
-    <!-- Quick Actions + Kategorie + Version Upload -->
+    <!-- Quick Actions + Kategorien + Version Upload -->
     <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
       <div class="border-b border-slate-200/80 px-5 py-3">
         <h2 class="text-sm font-semibold text-[var(--ink)]">Aktionen</h2>
@@ -143,31 +143,61 @@
           </div>
         </div>
 
-        <!-- Kategorie setzen -->
+        <!-- Kategorien setzen (Checkboxen statt Multi-Select) -->
         <div class="space-y-2 border-t border-slate-200/80 pt-4">
           <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
-            Kategorie
+            Kategorien
           </div>
 
           {% if categories and categories|length > 0 %}
             <form
               method="post"
-              action="/documents/{{ doc.id }}/set-category-web"
-              class="flex flex-col gap-2 sm:flex-row"
+              action="/documents/{{ doc.id }}/set-categories-web"
+              class="flex flex-col gap-3"
             >
-              <select
-                name="category_id"
-                class="flex-1 rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-              >
-                <option value="">Keine Kategorie</option>
-                {% for cat in categories %}
-                  <option value="{{ cat.id }}"
-                    {% if doc.category_id == cat.id %}selected{% endif %}
-                  >
-                    {{ cat.name }}
-                  </option>
+              <!-- Checkboxen rein -->
+              <div class="category-checkbox-list">
+                {% for c in categories %}
+                  <label class="category-checkbox-item">
+                    <input
+                      type="checkbox"
+                      name="category_ids"
+                      value="{{ c.id }}"
+                      {% if c.id in current_category_ids %}checked{% endif %}
+                    />
+                    <span>{{ c.name }}</span>
+                  </label>
                 {% endfor %}
-              </select>
+              </div>
+
+              <!-- Optional CSS (hier lokal im Template) -->
+              <style>
+                .category-checkbox-list {
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 8px 16px;
+                  padding: 8px 0;
+                }
+                .category-checkbox-item {
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  user-select: none;
+                }
+              </style>
+
+              <div class="flex flex-wrap gap-2 pt-1">
+                {% if doc.categories and doc.categories|length > 0 %}
+                  {% for c in doc.categories %}
+                    <span class="inline-flex items-center rounded-full border border-slate-300 bg-[var(--bg)] px-2 py-1 text-[11px] text-[var(--ink)]">
+                      {{ c.name }}
+                    </span>
+                  {% endfor %}
+                {% else %}
+                  <span class="text-xs text-[var(--ink-muted)]">Keine Kategorien gesetzt.</span>
+                {% endif %}
+              </div>
+
               <button
                 type="submit"
                 class="inline-flex items-center justify-center rounded-full border border-slate-300 bg-[var(--bg)] px-4 py-2 text-xs font-medium text-[var(--ink)] shadow-sm hover:bg-slate-200/70"
@@ -177,7 +207,7 @@
             </form>
           {% else %}
             <p class="text-xs text-[var(--ink-muted)]">
-              Noch keine Kategorien vorhanden. Lege zuerst in der Dokumentenbibliothek eine Kategorie an.
+              Noch keine Kategorien vorhanden.
             </p>
           {% endif %}
         </div>
