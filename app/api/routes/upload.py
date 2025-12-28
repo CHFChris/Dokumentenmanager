@@ -1,7 +1,7 @@
 # app/api/routes/upload.py
 from __future__ import annotations
 
-from typing import Final, List, Optional
+from typing import Final, List, Optional, Tuple
 
 import os
 from uuid import uuid4
@@ -16,7 +16,7 @@ from app.db.database import get_db
 from app.schemas.document import DocumentOut
 from app.utils.files import ensure_dir
 from app.utils.crypto_utils import encrypt_bytes, compute_integrity_tag
-from app.repositories.document_repo import create_document_with_version
+from app.repositories.document_repo import create_document_with_version, get_by_sha_or_name_size
 from app.services.document_service import run_ocr_and_auto_category
 from app.services.document_category_service import set_document_categories
 
@@ -41,6 +41,60 @@ UPLOAD_DEBUG: Final[bool] = True
 def _d(msg: str) -> None:
     # IMMER drucken
     print(msg)
+
+
+class DuplicateDocumentError(Exception):
+    def __init__(self, existing_id: int, by: str = "sha256"):
+        self.existing_id = int(existing_id)
+        self.by = (by or "sha256").strip()
+        super().__init__(f"Duplicate document detected (by={self.by}, existing_id={self.existing_id})")
+
+
+def find_duplicate(
+    db: Session,
+    user_id: int,
+    sha256: Optional[str],
+    name: Optional[str],
+    size: Optional[int],
+) -> Tuple[Optional[object], Optional[str]]:
+    """
+    Prüft Duplikat über:
+    - checksum_sha256 (falls sha256 gesetzt)
+    - filename (case-insensitive) + size_bytes (falls beides gesetzt)
+
+    Rückgabe: (Document|None, "sha256"|"name_size"|None)
+    """
+    sha256 = (sha256 or "").strip()
+    name = (name or "").strip()
+    size_val: Optional[int]
+    try:
+        size_val = int(size) if size is not None else None
+    except Exception:
+        size_val = None
+
+    doc = get_by_sha_or_name_size(
+        db=db,
+        user_id=user_id,
+        sha256=sha256 or None,
+        filename=name or None,
+        size_bytes=size_val,
+    )
+    if not doc:
+        return None, None
+
+    by = "name_size"
+    try:
+        if sha256 and getattr(doc, "checksum_sha256", None) == sha256:
+            by = "sha256"
+        elif name and size_val is not None:
+            fn = getattr(doc, "filename", None) or ""
+            sb = getattr(doc, "size_bytes", None)
+            if str(fn).lower() == name.lower() and sb == size_val:
+                by = "name_size"
+    except Exception:
+        pass
+
+    return doc, by
 
 
 def _normalize_category_ids(raw: Optional[List[int]]) -> List[int]:
@@ -79,8 +133,9 @@ async def _handle_upload_common(
     user: CurrentUser,
     file: UploadFile,
     category_ids: Optional[List[int]] = None,
+    allow_duplicate: bool = False,
 ):
-    _d(f"[UPLOAD][DEBUG] ENTER _handle_upload_common user_id={getattr(user, 'id', None)}")
+    _d(f"[UPLOAD][DEBUG] ENTER _handle_upload_common user_id={getattr(user, 'id', None)} allow_duplicate={allow_duplicate}")
     _d(f"[UPLOAD][DEBUG] raw category_ids param = {category_ids!r} type={type(category_ids)!r}")
 
     if not file.filename:
@@ -113,6 +168,19 @@ async def _handle_upload_common(
 
     # HMAC statt SHA256 (Integrität)
     sha256_hex = compute_integrity_tag(raw_bytes)
+
+    # Duplikatserkennung (Hash oder Name+Groesse) vor dem Schreiben der Datei
+    # allow_duplicate=True ueberspringt die Erkennung (Userentscheidung).
+    if not allow_duplicate:
+        dup_doc, dup_by = find_duplicate(
+            db=db,
+            user_id=user.id,
+            sha256=sha256_hex,
+            name=os.path.basename(file.filename),
+            size=size_bytes,
+        )
+        if dup_doc:
+            raise DuplicateDocumentError(existing_id=dup_doc.id, by=str(dup_by or "sha256"))
 
     # interner Name
     stored_name = uuid4().hex
@@ -186,13 +254,26 @@ async def _handle_upload_common(
 async def upload_file(
     file: UploadFile = File(...),
     category_ids: List[int] = Form(default=[]),
+    allow_duplicate: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
     _d("[UPLOAD][DEBUG] HIT /upload")
-    _d(f"[UPLOAD][DEBUG] /upload received category_ids={category_ids!r} type={type(category_ids)!r}")
+    _d(f"[UPLOAD][DEBUG] /upload received category_ids={category_ids!r} type={type(category_ids)!r} allow_duplicate={allow_duplicate}")
 
-    doc = await _handle_upload_common(db, user, file, category_ids=category_ids)
+    try:
+        doc = await _handle_upload_common(
+            db,
+            user,
+            file,
+            category_ids=category_ids,
+            allow_duplicate=allow_duplicate,
+        )
+    except DuplicateDocumentError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "duplicate_detected", "existing_id": e.existing_id, "by": e.by},
+        )
 
     categories = getattr(doc, "categories", None) or []
     _d(f"[UPLOAD][DEBUG] /upload response doc_id={doc.id} categories={_cat_ids_from_doc(doc)}")
@@ -213,13 +294,25 @@ async def upload_file(
 async def upload_web(
     file: UploadFile = File(...),
     category_ids: List[int] = Form(default=[]),
+    allow_duplicate: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
     _d("[UPLOAD][DEBUG] HIT /upload-web")
-    _d(f"[UPLOAD][DEBUG] /upload-web received category_ids={category_ids!r} type={type(category_ids)!r}")
+    _d(f"[UPLOAD][DEBUG] /upload-web received category_ids={category_ids!r} type={type(category_ids)!r} allow_duplicate={allow_duplicate}")
 
-    await _handle_upload_common(db, user, file, category_ids=category_ids)
-
-    _d("[UPLOAD][DEBUG] /upload-web redirecting to /upload")
-    return RedirectResponse(url="/upload", status_code=303)
+    try:
+        await _handle_upload_common(
+            db,
+            user,
+            file,
+            category_ids=category_ids,
+            allow_duplicate=allow_duplicate,
+        )
+        _d("[UPLOAD][DEBUG] /upload-web redirecting to /upload")
+        return RedirectResponse(url="/upload", status_code=303)
+    except DuplicateDocumentError as e:
+        return RedirectResponse(
+            url=f"/upload?duplicate=1&existing_id={e.existing_id}",
+            status_code=303,
+        )

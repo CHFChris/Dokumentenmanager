@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update, func, desc
+from sqlalchemy import select, update, func, desc, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.document import Document
@@ -420,3 +420,58 @@ def set_ocr_text_for_document(
     )
     db.commit()
     return (res.rowcount or 0) > 0
+
+
+# -------------------------------------------------------------------
+# Duplikate: SHA256 oder (Name + Groesse)
+# -------------------------------------------------------------------
+def get_by_sha_or_name_size(
+    db: Session,
+    user_id: int,
+    sha256: Optional[str],
+    filename: Optional[str],
+    size_bytes: Optional[int],
+) -> Optional[Document]:
+    """Findet ein bereits vorhandenes Dokument des Users.
+
+    Trefferregeln:
+    1) checksum_sha256 == sha256 (falls sha256 gesetzt)
+    2) filename (case-insensitive) + size_bytes (falls beides gesetzt)
+
+    Rueckgabe: Document oder None.
+    """
+    sha256 = (sha256 or "").strip()
+    filename = (filename or "").strip()
+
+    try:
+        size_val = int(size_bytes) if size_bytes is not None else None
+    except Exception:
+        size_val = None
+
+    if not sha256 and (not filename or size_val is None):
+        return None
+
+    # (Name+Groesse) als Block
+    name_size_block = None
+    if filename and size_val is not None:
+        name_size_block = (func.lower(Document.filename) == func.lower(filename)) & (Document.size_bytes == size_val)
+
+    # Kombiniere: sha256 OR (name AND size)
+    if sha256 and name_size_block is not None:
+        match_expr = or_(Document.checksum_sha256 == sha256, name_size_block)
+    elif sha256:
+        match_expr = (Document.checksum_sha256 == sha256)
+    else:
+        match_expr = name_size_block
+
+    stmt = (
+        select(Document)
+        .where(
+            Document.owner_user_id == user_id,
+            Document.is_deleted.is_(False),
+            match_expr,
+        )
+        .order_by(desc(Document.id))
+        .limit(1)
+    )
+    return db.execute(stmt).scalars().one_or_none()

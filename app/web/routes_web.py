@@ -159,8 +159,19 @@ def upload_page(
     request: Request,
     user: CurrentUser = Depends(get_current_user_web),
     db: Session = Depends(get_db),
+    error: Optional[str] = Query(None),
+    duplicate: Optional[int] = Query(None),
+    existing_id: Optional[int] = Query(None),
 ):
     categories = list_categories_for_user(db, user.id)
+
+    dup_doc = None
+    if existing_id:
+        try:
+            dup_doc = get_document_for_user(db, user.id, int(existing_id))
+        except Exception:
+            dup_doc = None
+
     return templates.TemplateResponse(
         "upload.html",
         {
@@ -168,6 +179,9 @@ def upload_page(
             "user": user,
             "active": "upload",
             "categories": categories,
+            "error": error,
+            "duplicate": bool(duplicate),
+            "duplicate_doc": dup_doc,
         },
     )
 
@@ -536,7 +550,6 @@ def document_detail_page(
     categories = list_categories_for_user(db, user.id)
     versions = list_document_versions(db, doc.id)
 
-    # 5.1: current_category_ids an Template geben
     current_category_ids = [c.id for c in (getattr(doc, "categories", None) or [])]
 
     return templates.TemplateResponse(
