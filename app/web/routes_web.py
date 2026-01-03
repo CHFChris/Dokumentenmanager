@@ -186,8 +186,9 @@ def upload_page(
     )
 
 
-@router.post("/upload-web", include_in_schema=False)
-async def upload_web(
+# NOTE: renamed to avoid colliding with API POST /upload-web (the one with duplicate logic)
+@router.post("/upload-web-legacy", include_in_schema=False)
+async def upload_web_legacy(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),

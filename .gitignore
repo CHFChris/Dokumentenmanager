@@ -72,4 +72,5 @@ coverage/
 .vite/
 *.local
 
-.data
+.data/
+data/**
