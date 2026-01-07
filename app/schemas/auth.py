@@ -43,7 +43,7 @@ class RegisterIn(BaseModel):
             raise ValueError("Password must contain at least one digit.")
         return v
 
-# ---------- Login ----------
+# ---------- Login ---------- 
 class LoginIn(BaseModel):
     identifier: str = Field(..., description="E-Mail oder Benutzername")
     password: PasswordStr

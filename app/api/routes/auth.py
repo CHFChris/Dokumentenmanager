@@ -64,7 +64,8 @@ def api_register(body: RegisterIn, db: Session = Depends(get_db)):
         if msg == "WEAK_PASSWORD":
             raise HTTPException(status_code=422, detail="WEAK_PASSWORD")
         raise
-
+    
+#-----------------------------------------------------
 @router.post(
     "/login",
     response_model=LoginOut,
@@ -77,7 +78,7 @@ def api_login(body: LoginIn, db: Session = Depends(get_db)):
     if res is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return res
-
+#-----------------------------------------------------
 @router.post("/logout", status_code=204)
 def api_logout(response: Response):
     response.delete_cookie(

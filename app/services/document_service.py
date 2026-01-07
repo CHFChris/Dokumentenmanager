@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 from typing import BinaryIO, Optional, List, Dict
 
 import sqlalchemy as sa
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from starlette.responses import StreamingResponse
 
 from app.core.config import settings
@@ -32,7 +32,7 @@ from app.schemas.document import DocumentListOut, DocumentOut
 from app.services.auto_tagging import suggest_categories_for_document
 from app.services.document_category_service import set_document_categories
 from app.services.ocr_service import ocr_and_clean
-from app.utils.crypto_utils import decrypt_bytes
+from app.utils.crypto_utils import decrypt_bytes, decrypt_text
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
 # ------------------------------------------------------------
@@ -76,11 +76,11 @@ def _unique_target_path(base_dir: str, original_name_for_ext: str) -> tuple[str,
     return disk_name, target_path
 
 
-def _tokenize(text: str) -> List[str]:
+def _tokenize(text: str) -> list[str]:
     if not text:
         return []
     raw_tokens = text.lower().split()
-    tokens: List[str] = []
+    tokens: list[str] = []
     for t in raw_tokens:
         t = t.strip(".,;:!?()[]{}\"'`<>|/\\+-=_")
         if not t:
@@ -91,22 +91,6 @@ def _tokenize(text: str) -> List[str]:
             continue
         tokens.append(t)
     return tokens
-
-
-def _score_document(title: str, body: str, query_tokens: List[str]) -> int:
-    if not query_tokens:
-        return 0
-
-    title_l = (title or "").lower()
-    body_l = (body or "").lower()
-
-    score = 0
-    for tok in query_tokens:
-        if tok in title_l:
-            score += 3
-        if tok in body_l:
-            score += 1
-    return score
 
 
 def _categories_to_string(doc: Document) -> Optional[str]:
@@ -123,6 +107,15 @@ def _category_ids(doc: Document) -> List[int]:
         if isinstance(cid, int):
             out.append(cid)
     return out
+
+
+def _decrypt_ocr_text_if_needed(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    try:
+        return decrypt_text(value)
+    except Exception:
+        return ""
 
 
 # ------------------------------------------------------------
@@ -143,7 +136,7 @@ def dashboard_stats(db: Session, user_id: int) -> dict:
         .all()
     )
 
-    word_stats = [{"id": d.id, "words": len((d.ocr_text or "").split())} for d in most_words]
+    word_stats = [{"id": d.id, "words": len((_decrypt_ocr_text_if_needed(d.ocr_text)).split())} for d in most_words]
 
     return {
         "total": total,
@@ -155,18 +148,18 @@ def dashboard_stats(db: Session, user_id: int) -> dict:
 
 
 # ------------------------------------------------------------
-# Listing / Suche (einfach, LIKE-basiert)
+# Listing / Suche
 # ------------------------------------------------------------
 def list_documents(
     db: Session,
     user_id: int,
-    q: Optional[str],
+    q: str | None,
     limit: int,
     offset: int,
-    category_id: Optional[int] = None,
-    created_from: Optional[datetime] = None,
-    created_to: Optional[datetime] = None,
-    mime_startswith: Optional[str] = None,
+    category_id: int | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    mime_startswith: str | None = None,
     only_with_ocr: bool = False,
 ) -> DocumentListOut:
     query = (
@@ -178,21 +171,23 @@ def list_documents(
     )
 
     if q:
-        pattern = f"%{q}%"
-        query = query.filter(
-            sa.or_(
-                Document.filename.ilike(pattern),
-                Document.ocr_text.ilike(pattern),
-            )
+        return search_documents_advanced(
+            db=db,
+            user_id=user_id,
+            q=q,
+            limit=limit,
+            offset=offset,
+            category_id=category_id,
+            created_from=created_from,
+            created_to=created_to,
+            mime_startswith=mime_startswith,
+            only_with_ocr=only_with_ocr,
         )
 
     if category_id is not None:
         query = (
             query.join(Document.categories)
-            .filter(
-                Category.id == category_id,
-                Category.user_id == user_id,
-            )
+            .filter(Category.id == category_id, Category.user_id == user_id)
             .distinct()
         )
 
@@ -224,8 +219,8 @@ def list_documents(
             size=r.size_bytes,
             sha256="",
             created_at=getattr(r, "created_at", None),
-            category=_categories_to_string(r),
-            category_ids=_category_ids(r),
+            category=", ".join([c.name for c in (getattr(r, "categories", None) or [])]) or None,
+            category_ids=[c.id for c in (getattr(r, "categories", None) or []) if getattr(c, "id", None) is not None],
             category_names=[c.name for c in (getattr(r, "categories", None) or [])],
         )
         for r in rows
@@ -233,34 +228,20 @@ def list_documents(
     return DocumentListOut(items=items, total=total)
 
 
-# ------------------------------------------------------------
-# Erweiterte Suche (Tokenisierung + Relevanzranking)
-# ------------------------------------------------------------
 def search_documents_advanced(
     db: Session,
     user_id: int,
     q: str,
     limit: int,
     offset: int,
-    category_id: Optional[int] = None,
-    created_from: Optional[datetime] = None,
-    created_to: Optional[datetime] = None,
-    mime_startswith: Optional[str] = None,
+    category_id: int | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    mime_startswith: str | None = None,
     only_with_ocr: bool = False,
 ) -> DocumentListOut:
     if not q:
-        return list_documents(
-            db=db,
-            user_id=user_id,
-            q=None,
-            limit=limit,
-            offset=offset,
-            category_id=category_id,
-            created_from=created_from,
-            created_to=created_to,
-            mime_startswith=mime_startswith,
-            only_with_ocr=only_with_ocr,
-        )
+        return DocumentListOut(items=[], total=0)
 
     query_tokens = _tokenize(q)
     if not query_tokens:
@@ -272,15 +253,13 @@ def search_documents_advanced(
             Document.owner_user_id == user_id,
             Document.is_deleted == False,  # noqa: E712
         )
+        .options(selectinload(Document.categories), selectinload(Document.versions))
     )
 
     if category_id is not None:
         base_query = (
             base_query.join(Document.categories)
-            .filter(
-                Category.id == category_id,
-                Category.user_id == user_id,
-            )
+            .filter(Category.id == category_id, Category.user_id == user_id)
             .distinct()
         )
 
@@ -296,41 +275,70 @@ def search_documents_advanced(
     if only_with_ocr:
         base_query = base_query.filter(Document.ocr_text.isnot(None))
 
-    candidates: List[Document] = base_query.all()
+    candidates: list[Document] = base_query.all()
 
-    scored: List[Dict] = []
+    scored: list[dict] = []
+    now = datetime.now(timezone.utc)
+
     for d in candidates:
-        title = d.filename or ""
-        body = d.ocr_text or ""
-        score = _score_document(title, body, query_tokens)
-        if score <= 0:
-            continue
-        scored.append({"doc": d, "score": score})
+        title = (d.filename or "").strip()
 
-    scored.sort(
-        key=lambda x: (
-            x["score"],
-            getattr(x["doc"], "created_at", datetime.min),
-            x["doc"].id,
-        ),
-        reverse=True,
-    )
+        body_plain = ""
+        enc = getattr(d, "ocr_text", None)
+        if enc:
+            try:
+                body_plain = decrypt_text(enc) or ""
+            except Exception:
+                body_plain = ""
+
+        # Trefferhaeufigkeit (title * 3, body * 1)
+        title_l = title.lower()
+        body_l = body_plain.lower()
+        hit_score = 0
+        for tok in query_tokens:
+            if not tok:
+                continue
+            hit_score += title_l.count(tok) * 3
+            hit_score += body_l.count(tok)
+
+        if hit_score <= 0:
+            continue
+
+        # Aktualitaet: max(created_at, version.updated_at/created_at)
+        last_upd = getattr(d, "created_at", None)
+        for v in (getattr(d, "versions", None) or []):
+            cand = getattr(v, "updated_at", None) or getattr(v, "created_at", None)
+            if cand and (last_upd is None or cand > last_upd):
+                last_upd = cand
+
+        if last_upd is None:
+            last_upd = datetime.fromtimestamp(0, tz=timezone.utc)
+        elif last_upd.tzinfo is None:
+            last_upd = last_upd.replace(tzinfo=timezone.utc)
+
+        age_days = max(0, int((now - last_upd).total_seconds() // 86400))
+        recency_bonus = max(0, 30 - min(age_days, 30))  # 0..30
+
+        score = hit_score * 100 + recency_bonus
+        scored.append({"doc": d, "score": score, "last_upd": last_upd})
+
+    scored.sort(key=lambda x: (x["score"], x["last_upd"], x["doc"].id), reverse=True)
 
     total = len(scored)
     sliced = scored[offset: offset + limit]
 
     items = [
         DocumentOut(
-            id=entry["doc"].id,
-            name=entry["doc"].filename,
-            size=entry["doc"].size_bytes,
+            id=e["doc"].id,
+            name=e["doc"].filename,
+            size=e["doc"].size_bytes,
             sha256="",
-            created_at=getattr(entry["doc"], "created_at", None),
-            category=_categories_to_string(entry["doc"]),
-            category_ids=_category_ids(entry["doc"]),
-            category_names=[c.name for c in (getattr(entry["doc"], "categories", None) or [])],
+            created_at=getattr(e["doc"], "created_at", None),
+            category=", ".join([c.name for c in (getattr(e["doc"], "categories", None) or [])]) or None,
+            category_ids=[c.id for c in (getattr(e["doc"], "categories", None) or []) if getattr(c, "id", None) is not None],
+            category_names=[c.name for c in (getattr(e["doc"], "categories", None) or [])],
         )
-        for entry in sliced
+        for e in sliced
     ]
 
     return DocumentListOut(items=items, total=total)
@@ -393,6 +401,8 @@ def upload_document(
                 category_ids=new_ids,
             )
 
+            db.refresh(doc)
+
     return DocumentOut(
         id=doc.id,
         name=doc.filename,
@@ -409,7 +419,12 @@ def upload_document(
 # Detail / Download
 # ------------------------------------------------------------
 def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
-    doc = get_document_for_user(db, user_id, doc_id)
+    doc = (
+        db.query(Document)
+        .filter(Document.owner_user_id == user_id, Document.id == doc_id)
+        .options(selectinload(Document.categories))
+        .first()
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -596,7 +611,13 @@ def run_ocr_and_auto_category(
     print(f"[OCR] Auto-Kategorien gefunden: {cat_ids} fuer Doc {doc.id}")
 
     try:
-        current_doc = get_document_for_user(db, user_id, doc.id) or doc
+        current_doc = (
+            db.query(Document)
+            .filter(Document.owner_user_id == user_id, Document.id == doc.id)
+            .options(selectinload(Document.categories))
+            .first()
+        ) or doc
+
         existing_ids: List[int] = []
         for c in (getattr(current_doc, "categories", None) or []):
             cid = getattr(c, "id", None)

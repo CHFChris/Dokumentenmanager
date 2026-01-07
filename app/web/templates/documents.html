@@ -186,27 +186,20 @@
 
             <div class="flex flex-wrap items-end gap-3">
               <div class="min-w-[260px] w-full sm:w-auto">
-                <div class="text-xs text-gray-600 mb-1">Kategorien auswählen:</div>
+                <div class="text-xs text-gray-600 mb-1">Kategorien auswaehlen:</div>
 
-                {# Styling wie Input, aber ohne input-Klasse (die hat oft Nebenwirkungen) #}
-                <div class="h-32 overflow-y-auto rounded-xl border border-gray-300 bg-white p-2 shadow-sm">
-                  <div class="space-y-1">
-                    {% for cat in categories %}
-                      <label class="flex items-center gap-2 text-sm text-gray-800 select-none px-1 py-0.5 rounded-md hover:bg-gray-50">
-                        <input
-                          type="checkbox"
-                          name="category_ids"
-                          value="{{ cat.id }}"
-                          class="h-4 w-4 rounded border-gray-300"
-                        >
-                        <span>{{ cat.name }}</span>
-                      </label>
-                    {% endfor %}
-                  </div>
-                </div>
-
-                <div class="mt-1 text-[11px] text-gray-400">
-                  Mehrfachauswahl: Checkboxen.
+                <div class="input h-32 overflow-y-auto p-2 space-y-1">
+                  {% for cat in categories %}
+                    <label class="flex items-center gap-2 text-sm text-gray-800">
+                      <input
+                        type="checkbox"
+                        name="category_ids"
+                        value="{{ cat.id }}"
+                        class="h-4 w-4 rounded border-gray-300"
+                      >
+                      <span>{{ cat.name }}</span>
+                    </label>
+                  {% endfor %}
                 </div>
               </div>
 
@@ -244,8 +237,18 @@
 
                     <td class="px-3 py-2 align-middle">
                       <a href="/documents/{{ d.id }}" class="text-sm font-medium text-gray-900 hover:underline">
-                        {{ d.name }}
+                        {% if d.name_html %}
+                          {{ d.name_html | safe }}
+                        {% else %}
+                          {{ d.name }}
+                        {% endif %}
                       </a>
+
+                      {% if d.snippet_html %}
+                        <div class="mt-1 text-xs text-gray-500 leading-snug">
+                          {{ d.snippet_html | safe }}
+                        </div>
+                      {% endif %}
                     </td>
 
                     <td class="px-3 py-2 align-middle">
@@ -289,7 +292,6 @@
                       {% endif %}
                     </td>
 
-                    {# Keine nested forms: Delete wird per JS über Hidden-Form gemacht #}
                     <td class="px-3 py-2 align-middle">
                       <div class="flex flex-wrap gap-2">
                         <a href="/documents/{{ d.id }}/view"
@@ -323,7 +325,6 @@
 
         </form>
 
-        {# Hidden delete form (außerhalb des Bulk-Forms) #}
         <form id="row-delete-form" method="post" action="/files/0/delete-web" class="hidden"></form>
 
       {% else %}
@@ -346,27 +347,28 @@
       });
     }
 
-    // Bulk-Submit-Validierung: nur für Bulk-Formular, nicht für Delete
     const form = document.getElementById("bulk-assign-form");
     if (form) {
       form.addEventListener("submit", function (e) {
         const docIds = Array.from(document.querySelectorAll('input[name="doc_ids"]:checked')).map(cb => cb.value);
         const catIds = Array.from(document.querySelectorAll('input[name="category_ids"]:checked')).map(cb => cb.value);
 
+        console.log("[BULK] doc_ids =", docIds);
+        console.log("[BULK] category_ids =", catIds);
+
         if (docIds.length === 0) {
           e.preventDefault();
-          alert("Wähle mindestens ein Dokument aus.");
+          alert("Waehle mindestens ein Dokument aus.");
           return;
         }
         if (catIds.length === 0) {
           e.preventDefault();
-          alert("Wähle mindestens eine Kategorie aus.");
+          alert("Waehle mindestens eine Kategorie aus.");
           return;
         }
       });
     }
 
-    // Row-Delete ohne nested form
     const delForm = document.getElementById("row-delete-form");
     document.querySelectorAll("button[data-delete-id]").forEach(btn => {
       btn.addEventListener("click", function () {
@@ -376,7 +378,6 @@
 
         if (!confirm("Dokument wirklich löschen?\n\n" + name)) return;
 
-        // Action dynamisch setzen: /files/<id>/delete-web
         delForm.setAttribute("action", "/files/" + id + "/delete-web");
         delForm.submit();
       });
