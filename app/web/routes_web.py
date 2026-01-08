@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
-from datetime import datetime
+import re
+import html
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from fastapi import (
@@ -60,6 +62,179 @@ router = APIRouter()
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# -------------------------------------------------------------------
+# Suche: Tokenisierung, Relevanzranking, Snippets, Hervorhebung
+# -------------------------------------------------------------------
+_HL_MARK_CLASS = "bg-yellow-200/70 dark:bg-yellow-400/30 rounded px-0.5"
+
+
+def _tokenize_query(q: str) -> list[str]:
+    q = (q or "").strip().lower()
+    if not q:
+        return []
+    parts = re.split(r"\s+", q)
+    out: list[str] = []
+    seen = set()
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        p = re.sub(r"^[^\wäöüß]+|[^\wäöüß]+$", "", p, flags=re.IGNORECASE)
+        if not p:
+            continue
+        if p in seen:
+            continue
+        seen.add(p)
+        out.append(p)
+    return out
+
+
+def _compile_terms_pattern(terms: list[str]) -> re.Pattern | None:
+    if not terms:
+        return None
+    terms_sorted = sorted(terms, key=len, reverse=True)
+    return re.compile("|".join(re.escape(t) for t in terms_sorted), flags=re.IGNORECASE)
+
+
+def _count_matches(pat: re.Pattern, text: str) -> int:
+    if not text:
+        return 0
+    return sum(1 for _ in pat.finditer(text))
+
+
+def _to_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _doc_last_updated(d: Document) -> datetime:
+    base = _to_utc(getattr(d, "created_at", None))
+    latest = base
+    for v in (getattr(d, "versions", None) or []):
+        cand = _to_utc(getattr(v, "updated_at", None) or getattr(v, "created_at", None))
+        if cand and (latest is None or cand > latest):
+            latest = cand
+    return latest or datetime.fromtimestamp(0, tz=timezone.utc)
+
+
+def _highlight_html(text: str, pat: re.Pattern | None) -> str:
+    text = text or ""
+    if not text or pat is None:
+        return html.escape(text)
+    out: list[str] = []
+    last = 0
+    for m in pat.finditer(text):
+        out.append(html.escape(text[last:m.start()]))
+        out.append(f'<mark class="{_HL_MARK_CLASS}">{html.escape(text[m.start():m.end()])}</mark>')
+        last = m.end()
+    out.append(html.escape(text[last:]))
+    return "".join(out)
+
+
+def _snippet_with_context(text: str, pat: re.Pattern | None, *, max_len: int = 200, context: int = 70) -> str:
+    text = (text or "").strip()
+    if not text:
+        return ""
+    if pat is None:
+        return (text[: max_len - 1] + "...") if len(text) > max_len else text
+
+    m = pat.search(text)
+    if not m:
+        return (text[: max_len - 1] + "...") if len(text) > max_len else text
+
+    start = max(0, m.start() - context)
+    end = min(len(text), m.end() + context)
+    chunk = text[start:end].strip()
+
+    if start > 0:
+        chunk = "... " + chunk
+    if end < len(text):
+        chunk = chunk + " ..."
+    if len(chunk) > max_len:
+        chunk = chunk[: max_len - 1] + "..."
+    return chunk
+
+
+def _search_rank_pack_docs(docs: list[Document], q: str) -> list[dict]:
+    terms = _tokenize_query(q)
+    pat = _compile_terms_pattern(terms)
+
+    if not terms or pat is None:
+        return [
+            {
+                "id": d.id,
+                "name": getattr(d, "filename", None) or "",
+                "name_html": None,
+                "snippet_html": None,
+                "size": getattr(d, "size_bytes", 0) or 0,
+                "created_at": getattr(d, "created_at", None),
+                "categories": list(getattr(d, "categories", None) or []),
+            }
+            for d in docs
+        ]
+
+    now = datetime.now(timezone.utc)
+    ranked: list[dict] = []
+
+    for d in docs:
+        title = getattr(d, "filename", None) or ""
+        enc = getattr(d, "ocr_text", None)
+
+        body_plain = ""
+        if enc:
+            try:
+                body_plain = decrypt_text(enc) or ""
+            except Exception:
+                body_plain = ""
+
+        title_hits = _count_matches(pat, title)
+        body_hits = _count_matches(pat, body_plain)
+
+        hit_score = title_hits * 3 + body_hits
+        if hit_score <= 0:
+            continue
+
+        last_upd = _doc_last_updated(d)
+        age_days = max(0, int((now - last_upd).total_seconds() // 86400))
+        recency_bonus = max(0, 30 - min(age_days, 30))  # 0..30
+
+        score = hit_score * 100 + recency_bonus
+
+        snippet_src = body_plain if body_hits > 0 else title
+        snippet = _snippet_with_context(snippet_src, pat)
+        snippet_html = _highlight_html(snippet, pat)
+
+        ranked.append(
+            {
+                "doc": d,
+                "score": score,
+                "last_upd": last_upd,
+                "name_html": _highlight_html(title, pat),
+                "snippet_html": snippet_html,
+            }
+        )
+
+    ranked.sort(key=lambda x: (x["score"], x["last_upd"], x["doc"].id), reverse=True)
+
+    return [
+        {
+            "id": entry["doc"].id,
+            "name": getattr(entry["doc"], "filename", None) or "",
+            "name_html": entry["name_html"],
+            "snippet_html": entry["snippet_html"],
+            "size": getattr(entry["doc"], "size_bytes", 0) or 0,
+            "created_at": getattr(entry["doc"], "created_at", None),
+            "categories": list(getattr(entry["doc"], "categories", None) or []),
+            "last_updated": entry["last_upd"],
+            "score": entry["score"],
+        }
+        for entry in ranked
+    ]
+
 
 FILES_DIR = getattr(settings, "FILES_DIR", "./data/files")
 
@@ -159,8 +334,19 @@ def upload_page(
     request: Request,
     user: CurrentUser = Depends(get_current_user_web),
     db: Session = Depends(get_db),
+    error: Optional[str] = Query(None),
+    duplicate: Optional[int] = Query(None),
+    existing_id: Optional[int] = Query(None),
 ):
     categories = list_categories_for_user(db, user.id)
+
+    dup_doc = None
+    if existing_id:
+        try:
+            dup_doc = get_document_for_user(db, user.id, int(existing_id))
+        except Exception:
+            dup_doc = None
+
     return templates.TemplateResponse(
         "upload.html",
         {
@@ -168,12 +354,16 @@ def upload_page(
             "user": user,
             "active": "upload",
             "categories": categories,
+            "error": error,
+            "duplicate": bool(duplicate),
+            "duplicate_doc": dup_doc,
         },
     )
 
 
-@router.post("/upload-web", include_in_schema=False)
-async def upload_web(
+# NOTE: renamed to avoid colliding with API POST /upload-web (the one with duplicate logic)
+@router.post("/upload-web-legacy", include_in_schema=False)
+async def upload_web_legacy(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -389,7 +579,11 @@ def documents_page(
 
     query = (
         db.query(Document)
+<<<<<<< HEAD
         .options(selectinload(Document.categories))
+=======
+        .options(selectinload(Document.categories), selectinload(Document.versions))
+>>>>>>> backup/feature-snapshot
         .filter(
             Document.owner_user_id == user.id,
             Document.is_deleted == False,  # noqa: E712
@@ -465,6 +659,7 @@ def documents_page(
             new_list.append(d)
         filtered_docs_orm = new_list
 
+<<<<<<< HEAD
     filtered_docs = [
         {
             "id": d.id,
@@ -475,6 +670,11 @@ def documents_page(
         }
         for d in filtered_docs_orm
     ]
+=======
+    # --- ganz am Ende: packen + ranken
+    packed_docs = _search_rank_pack_docs(filtered_docs_orm, q or "")
+    filtered_docs = packed_docs
+>>>>>>> backup/feature-snapshot
 
     categories = list_categories_for_user(db, user.id)
 
@@ -495,12 +695,55 @@ def documents_page(
     )
 
 
+<<<<<<< HEAD
 @router.post("/documents/bulk-assign-category", include_in_schema=False)
 async def documents_bulk_assign_category(
     request: Request,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
+=======
+@router.get("/search", response_class=HTMLResponse)
+def search_page(
+    request: Request,
+    q: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    docs_orm: list[Document] = (
+        db.query(Document)
+        .filter(
+            Document.owner_user_id == user.id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .options(selectinload(Document.categories), selectinload(Document.versions))
+        .order_by(Document.id.desc())
+        .limit(500)
+        .all()
+    )
+
+    q_clean = (q or "").strip()
+    results_list = _search_rank_pack_docs(docs_orm, q_clean) if q_clean else []
+
+    return templates.TemplateResponse(
+        "search.html",
+        {
+            "request": request,
+            "user": user,
+            "q": q or "",
+            "results_list": results_list,
+            "active": "search",
+        },
+    )
+
+
+@router.post("/documents/bulk-assign-category", include_in_schema=False)
+async def documents_bulk_assign_category(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+>>>>>>> backup/feature-snapshot
     form = await request.form()
 
     raw_docs = form.getlist("doc_ids")
@@ -536,7 +779,10 @@ def document_detail_page(
     categories = list_categories_for_user(db, user.id)
     versions = list_document_versions(db, doc.id)
 
+<<<<<<< HEAD
     # 5.1: current_category_ids an Template geben
+=======
+>>>>>>> backup/feature-snapshot
     current_category_ids = [c.id for c in (getattr(doc, "categories", None) or [])]
 
     return templates.TemplateResponse(

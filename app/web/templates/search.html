@@ -1,117 +1,98 @@
-  {% extends "base.html" %}
-  {% block title %}Search · SPKH{% endblock %}
+{% extends "base.html" %}
+{% block title %}Suche · Dokumentenmanager{% endblock %}
 
-  {% block content %}
-  <h2>Search Documents</h2>
-  <p class="muted" style="margin-top:-4px;margin-bottom:18px;">Find documents by content, title, or keywords</p>
+{% block content %}
+<div class="container mx-auto max-w-6xl py-6 px-4">
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Suche</h1>
+      <p class="text-sm text-gray-500 mt-1">Treffer sind nach Relevanz sortiert und Suchbegriffe sind markiert.</p>
+    </div>
+  </div>
 
-  <div class="card">
-    <div class="card-body">
-      <form class="searchbar" method="get" action="/search">
-        <input class="input" type="text" name="q" value="{{ q or '' }}" placeholder="Search your documents...">
-        <button class="btn primary">Search</button>
+  <div class="rounded-2xl border bg-white shadow-sm mb-6">
+    <div class="p-4 sm:p-5">
+      <form method="get" action="/search" class="flex flex-wrap items-end gap-3">
+        <div class="flex-1 min-w-[220px]">
+          <label class="block text-xs text-gray-600 mb-1">Suchbegriff</label>
+          <input class="input w-full" type="text" name="q" value="{{ q or '' }}" placeholder="z.B. Rechnung, Vertrag, Versicherung">
+        </div>
+        <div class="w-full sm:w-auto">
+          <button class="btn w-full sm:w-auto" type="submit">Suchen</button>
+        </div>
       </form>
     </div>
   </div>
 
-  {# Start-Ansicht #}
-  {% if q is not defined or (q|string)=='' %}
-    <div class="empty" style="margin-top:16px">
-      <div style="font-size:48px">🔎</div>
-      <div>Start searching</div>
-      <div class="muted">Enter keywords to find documents in your knowledge hub</div>
+  {% if (q or '')|trim == '' %}
+    <div class="rounded-2xl border bg-white shadow-sm p-6 text-sm text-gray-600">
+      Suche starten durch Eingabe eines Suchbegriffs.
     </div>
   {% else %}
-    <div class="card" style="margin-top:16px">
-      <div class="card-body">
-        {# Normiere results auf eine Liste results_list #}
-        {% set results_list =
-          results.items if results is mapping and results.items is defined
-          else (results.items if results is not mapping and results.items is defined
-          else results)
-        %}
+    <div class="rounded-2xl border bg-white shadow-sm">
+      <div class="p-4 sm:p-5 border-b border-gray-100 flex items-center justify-between">
+        <div class="text-sm font-semibold text-gray-900">Ergebnisse</div>
+        <div class="text-xs text-gray-500">{{ results_list|length if results_list else 0 }} Treffer</div>
+      </div>
 
+      <div class="p-3 sm:p-4">
         {% if results_list and results_list|length > 0 %}
-          <table role="grid">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Snippet / Info</th>
-                <th style="width:120px">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in results_list %}
-                {% set ext = (r.name.rsplit('.',1)[-1]).upper() if '.' in r.name else 'FILE' %}
+          <div class="overflow-x-auto rounded-xl border border-gray-100">
+            <table role="grid" class="min-w-full text-sm">
+              <thead class="bg-gray-50">
                 <tr>
-                  <td>
-                    <a href="/documents/{{ r.id }}">{{ r.name }}</a><br>
-                    <span class="badge {{ 'red' if ext=='PDF' else ('green' if ext in ['TXT','MD'] else 'gray') }}">{{ ext }}</span>
-                  </td>
-
-                  <td class="muted">
-                    {# Bevorzugt Snippet anzeigen, sonst technische Infos #}
-                    {% if r.snippet %}
-                      {{ r.snippet }}
-                    {% else %}
-                      <div class="row" style="gap:8px;flex-wrap:wrap">
-                        <span>
-                          {% if r.size is not none %}
-                            {% if r.size >= 1024*1024 %}
-                              {{ (r.size/1024/1024)|round(2) }} MB
-                            {% elif r.size >= 1024 %}
-                              {{ (r.size/1024)|round(0) }} KB
-                            {% else %}
-                              {{ r.size }} B
-                            {% endif %}
-                          {% else %}-{% endif %}
-                        </span>
-                        {% if r.sha256 %}
-                          <span class="muted">·</span>
-                          <code class="text-xs">{{ r.sha256[:12] }}…</code>
-                        {% endif %}
-                        {% if r.created_at %}
-                          <span class="muted">·</span>
-                          <span>{{ r.created_at.strftime('%Y-%m-%d') }}</span>
-                        {% endif %}
-                      </div>
-                    {% endif %}
-                  </td>
-
-                  <td>
-                    <div class="row">
-                      <a class="btn" href="/documents/{{ r.id }}">Open</a>
-                      <a class="btn" href="/documents/{{ r.id }}/download">⬇</a>
-                    </div>
-                  </td>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Titel</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Ausschnitt</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Aktionen</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                {% for r in results_list %}
+                  <tr class="hover:bg-gray-50/70">
+                    <td class="px-3 py-2 align-middle">
+                      <a href="/documents/{{ r.id }}" class="text-sm font-medium text-gray-900 hover:underline">
+                        {% if r.name_html %}
+                          {{ r.name_html | safe }}
+                        {% else %}
+                          {{ r.name }}
+                        {% endif %}
+                      </a>
+                    </td>
 
-          {# Pagination (optional, nur wenn vorhanden) #}
-          {% if results is defined and (results.has_prev is defined or results.has_next is defined) %}
-            <div class="row" style="margin-top:12px">
-              <div class="muted">
-                {% if results.page is defined and results.pages is defined %}
-                  Page {{ results.page }} of {{ results.pages }}
-                {% endif %}
-              </div>
-              <div class="right row">
-                {% if results.has_prev %}
-                  <a class="btn" href="?q={{ q|urlencode }}&page={{ results.prev_num }}">← Prev</a>
-                {% endif %}
-                {% if results.has_next %}
-                  <a class="btn" href="?q={{ q|urlencode }}&page={{ results.next_num }}">Next →</a>
-                {% endif %}
-              </div>
-            </div>
-          {% endif %}
+                    <td class="px-3 py-2 align-middle text-sm text-gray-600">
+                      {% if r.snippet_html %}
+                        {{ r.snippet_html | safe }}
+                      {% else %}
+                        -
+                      {% endif %}
+                    </td>
 
+                    <td class="px-3 py-2 align-middle">
+                      <div class="flex flex-wrap gap-2">
+                        <a href="/documents/{{ r.id }}/view"
+                           class="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-gray-300
+                                  text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">
+                          Anzeigen
+                        </a>
+                        <a class="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-600 text-white
+                                  text-xs font-medium hover:bg-blue-700"
+                           href="/documents/{{ r.id }}/download">
+                          Download
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% else %}
-          <div class="empty">No results for “<span class="font-medium">{{ q }}</span>”.</div>
+          <div class="py-10 text-center text-sm text-gray-500">
+            Keine Treffer für "{{ q }}".
+          </div>
         {% endif %}
       </div>
     </div>
   {% endif %}
-  {% endblock %}
+</div>
+{% endblock %}

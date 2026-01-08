@@ -72,4 +72,14 @@ coverage/
 .vite/
 *.local
 
-.data
+# runtime data (niemals committen)
+data/
+data/**
+**/data/
+**/data/**
+
+# falls du sowas auch hast
+files/
+files/**
+**/files/
+**/files/**

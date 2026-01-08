@@ -13,6 +13,9 @@ from app.db.database import get_db
 from app.web.templates import templates
 from app.models.user import User
 
+from app.web.toast import set_toast_cookie
+
+
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
@@ -56,7 +59,32 @@ def update_basic_profile(
     db.add(db_user)
     db.commit()
 
-    return RedirectResponse(url="/profile", status_code=303)
+    resp = RedirectResponse(url="/profile", status_code=303)
+    if getattr(db_user, "ui_notifications_enabled", True):
+        set_toast_cookie(resp, level="success", message="Profil gespeichert")
+    return resp
+
+
+@router.post("/update-notifications")
+def update_notification_settings(
+    ui_notifications_enabled: bool = Form(False),
+    security_email_new_device_enabled: bool = Form(False),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user_web),
+):
+    db_user = db.query(User).filter(User.id == current_user.id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    db_user.ui_notifications_enabled = bool(ui_notifications_enabled)
+    db_user.security_email_new_device_enabled = bool(security_email_new_device_enabled)
+    db.add(db_user)
+    db.commit()
+
+    resp = RedirectResponse(url="/profile", status_code=303)
+    if getattr(db_user, "ui_notifications_enabled", True):
+        set_toast_cookie(resp, level="success", message="Benachrichtigungen gespeichert")
+    return resp
 
 
 @router.post("/change-password")
