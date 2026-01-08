@@ -1,15 +1,19 @@
-﻿# app/repositories/document_repo.py
+# app/repositories/document_repo.py
 from __future__ import annotations
 
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime, timedelta
 
+<<<<<<< HEAD
 from sqlalchemy import select, update, func, desc
+=======
+from sqlalchemy import select, update, func, desc, or_
+>>>>>>> backup/feature-snapshot
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.document import Document
 from app.models.document_version import DocumentVersion
-from app.utils.crypto_utils import encrypt_text  # fÃ¼r verschlÃ¼sselte OCR-Texte
+from app.utils.crypto_utils import encrypt_text  # für verschlüsselte OCR-Texte
 
 
 # -------------------------------------------------------------------
@@ -19,7 +23,7 @@ def _filters(user_id: int, q: Optional[str]) -> list:
     """
     Gemeinsamer Filter:
     - Nur Dokumente des Users
-    - Nur nicht-gelÃ¶schte
+    - Nur nicht-gelöschte
     - Optional case-insensitive Suche im Dateinamen
     """
     cond = [Document.owner_user_id == user_id, Document.is_deleted.is_(False)]
@@ -34,8 +38,8 @@ def _filters(user_id: int, q: Optional[str]) -> list:
 # -------------------------------------------------------------------
 def get_document_for_user(db: Session, user_id: int, doc_id: int) -> Optional[Document]:
     """
-    Holt GENAU EIN Dokument fÃ¼r den gegebenen User (nur nicht-gelÃ¶schte).
-    Gibt None zurÃ¼ck, wenn nicht vorhanden oder nicht berechtigt.
+    Holt GENAU EIN Dokument für den gegebenen User (nur nicht-gelöschte).
+    Gibt None zurück, wenn nicht vorhanden oder nicht berechtigt.
     Eager-load: Kategorien (Many-to-Many).
     """
     stmt = (
@@ -53,7 +57,7 @@ def get_document_for_user(db: Session, user_id: int, doc_id: int) -> Optional[Do
 
 def get_document_owned(db: Session, doc_id: int, owner_id: int) -> Optional[Document]:
     """
-    RÃ¼ckwÃ¤rtskompatibler Wrapper fÃ¼r Altcode.
+    Rückwärtskompatibler Wrapper für Altcode.
     Neu bitte `get_document_for_user(db, user_id, doc_id)` verwenden.
     """
     return get_document_for_user(db=db, user_id=owner_id, doc_id=doc_id)
@@ -64,14 +68,14 @@ def get_document_owned(db: Session, doc_id: int, owner_id: int) -> Optional[Docu
 # -------------------------------------------------------------------
 def rename_document(db: Session, user_id: int, doc_id: int, new_name: str) -> bool:
     """
-    Bennennt ein Dokument um (nur Owner & nicht gelÃ¶scht).
-    RÃ¼ckgabe: True bei Erfolg, sonst False.
+    Bennennt ein Dokument um (nur Owner & nicht gelöscht).
+    Rückgabe: True bei Erfolg, sonst False.
     """
     new_name = (new_name or "").strip()
     if not new_name:
         return False
 
-    # Minimaler Basisschutz gegen unzulÃ¤ssige Namen/Steuerzeichen
+    # Minimaler Basisschutz gegen unzulässige Namen/Steuerzeichen
     if any(ch in new_name for ch in ("/", "\\", "\0")):
         return False
 
@@ -137,7 +141,7 @@ def list_documents_for_user(
     offset: int,
 ) -> Tuple[List[Document], int]:
     """
-    Alias zu search_documents â€“ bleibt separat fÃ¼r API-KompatibilitÃ¤t.
+    Alias zu search_documents – bleibt separat für API-Kompatibilität.
     """
     return search_documents(db, user_id, q, limit, offset)
 
@@ -200,7 +204,7 @@ def create_document_with_version(
 # -------------------------------------------------------------------
 def soft_delete_document(db: Session, doc_id: int, user_id: int) -> bool:
     """
-    Markiert ein Dokument als gelÃ¶scht (soft).
+    Markiert ein Dokument als gelöscht (soft).
     True, wenn genau eine Zeile betroffen ist.
     """
     res = db.execute(
@@ -227,8 +231,8 @@ def update_document_name_and_path(
     new_storage_path: str,
 ) -> bool:
     """
-    Aktualisiert atomar filename + storage_path (nur wenn Owner & nicht gelÃ¶scht).
-    RÃ¼ckgabe: True, wenn genau eine Zeile aktualisiert wurde.
+    Aktualisiert atomar filename + storage_path (nur wenn Owner & nicht gelöscht).
+    Rückgabe: True, wenn genau eine Zeile aktualisiert wurde.
     """
     new_filename = (new_filename or "").strip()
     new_storage_path = (new_storage_path or "").strip()
@@ -290,9 +294,9 @@ def recent_uploads_count_week(db: Session, user_id: int) -> int:
 
 def recent_uploads_for_user(db: Session, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
     """
-    Liefert die letzten Uploads (fÃ¼r das Dashboard).
+    Liefert die letzten Uploads (für das Dashboard).
     Sortierung nach created_at, Fallback id.
-    RÃ¼ckgabe als template-freundliche Dicts.
+    Rückgabe als template-freundliche Dicts.
     Eager-load: Kategorien (damit Dashboard/Listen nicht nachladen).
     """
     has_created_at = hasattr(Document, "created_at")
@@ -406,7 +410,7 @@ def get_version_owned(db: Session, doc_id: int, version_id: int, owner_id: int) 
 
 
 # -------------------------------------------------------------------
-# OCR-Schreiben (verschlÃ¼sselt)
+# OCR-Schreiben (verschlüsselt)
 # -------------------------------------------------------------------
 def set_ocr_text_for_document(
     db: Session,
@@ -481,4 +485,3 @@ def get_by_sha_or_name_size(
         .limit(1)
     )
     return db.execute(stmt).scalars().one_or_none()
-

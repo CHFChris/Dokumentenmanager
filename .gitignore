@@ -83,3 +83,7 @@ files/
 files/**
 **/files/
 **/files/**
+
+__pycache__/
+*.pyc
+

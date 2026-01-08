@@ -1,9 +1,14 @@
-﻿# app/services/document_service.py
+# app/services/document_service.py
 from __future__ import annotations
 
 import os
 import uuid
+<<<<<<< HEAD
 from datetime import datetime
+=======
+import mimetypes
+from datetime import datetime, timezone
+>>>>>>> backup/feature-snapshot
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 from typing import BinaryIO, Optional, List, Dict
@@ -32,7 +37,12 @@ from app.schemas.document import DocumentListOut, DocumentOut
 from app.services.auto_tagging import suggest_categories_for_document
 from app.services.document_category_service import set_document_categories
 from app.services.ocr_service import ocr_and_clean
+<<<<<<< HEAD
 from app.utils.crypto_utils import decrypt_bytes
+=======
+from app.utils.crypto_utils import decrypt_bytes, encrypt_bytes, compute_integrity_tag
+from app.utils.crypto_utils import decrypt_text
+>>>>>>> backup/feature-snapshot
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
 # ------------------------------------------------------------
@@ -42,7 +52,7 @@ FILES_DIR = getattr(settings, "FILES_DIR", "./data/files")
 
 SIMPLE_STOPWORDS = {
     "der", "die", "das", "und", "oder", "ein", "eine", "einer", "einem", "einen",
-    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "fÃ¼r",
+    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "für",
     "an", "am", "als", "zu", "zum", "zur", "bei", "aus", "dem",
     "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "at", "by",
     "this", "that", "these", "those", "it", "its", "be", "was", "were", "are",
@@ -76,7 +86,11 @@ def _unique_target_path(base_dir: str, original_name_for_ext: str) -> tuple[str,
     return disk_name, target_path
 
 
+<<<<<<< HEAD
 def _tokenize(text: str) -> List[str]:
+=======
+def _tokenize(text: str) -> list[str]:
+>>>>>>> backup/feature-snapshot
     if not text:
         return []
     raw_tokens = text.lower().split()
@@ -93,9 +107,16 @@ def _tokenize(text: str) -> List[str]:
     return tokens
 
 
+<<<<<<< HEAD
 def _score_document(title: str, body: str, query_tokens: List[str]) -> int:
     if not query_tokens:
         return 0
+=======
+def _categories_to_string(doc: Document) -> Optional[str]:
+    cats = getattr(doc, "categories", None) or []
+    names = [c.name for c in cats if getattr(c, "name", None)]
+    return ", ".join(names) if names else None
+>>>>>>> backup/feature-snapshot
 
 
 def _category_ids(doc: Document) -> List[int]:
@@ -151,7 +172,11 @@ def dashboard_stats(db: Session, user_id: int) -> dict:
         .all()
     )
 
+<<<<<<< HEAD
     word_stats = [{"id": d.id, "words": len((d.ocr_text or "").split())} for d in most_words]
+=======
+    word_stats = [{"id": d.id, "words": len((_decrypt_ocr_text_if_needed(d.ocr_text)).split())} for d in most_words]
+>>>>>>> backup/feature-snapshot
 
     return {
         "total": total,
@@ -202,10 +227,14 @@ def list_documents(
     if category_id is not None:
         query = (
             query.join(Document.categories)
+<<<<<<< HEAD
             .filter(
                 Category.id == category_id,
                 Category.user_id == user_id,
             )
+=======
+            .filter(Category.id == category_id, Category.user_id == user_id)
+>>>>>>> backup/feature-snapshot
             .distinct()
         )
 
@@ -237,8 +266,13 @@ def list_documents(
             size=r.size_bytes,
             sha256="",
             created_at=getattr(r, "created_at", None),
+<<<<<<< HEAD
             category=_categories_to_string(r),
             category_ids=_category_ids(r),
+=======
+            category=", ".join([c.name for c in (getattr(r, "categories", None) or [])]) or None,
+            category_ids=[c.id for c in (getattr(r, "categories", None) or []) if getattr(c, "id", None) is not None],
+>>>>>>> backup/feature-snapshot
             category_names=[c.name for c in (getattr(r, "categories", None) or [])],
         )
         for r in rows
@@ -277,10 +311,14 @@ def search_documents_advanced(
     if category_id is not None:
         base_query = (
             base_query.join(Document.categories)
+<<<<<<< HEAD
             .filter(
                 Category.id == category_id,
                 Category.user_id == user_id,
             )
+=======
+            .filter(Category.id == category_id, Category.user_id == user_id)
+>>>>>>> backup/feature-snapshot
             .distinct()
         )
 
@@ -354,10 +392,17 @@ def search_documents_advanced(
             name=e["doc"].filename,
             size=e["doc"].size_bytes,
             sha256="",
+<<<<<<< HEAD
             created_at=getattr(entry["doc"], "created_at", None),
             category=_categories_to_string(entry["doc"]),
             category_ids=_category_ids(entry["doc"]),
             category_names=[c.name for c in (getattr(entry["doc"], "categories", None) or [])],
+=======
+            created_at=getattr(e["doc"], "created_at", None),
+            category=", ".join([c.name for c in (getattr(e["doc"], "categories", None) or [])]) or None,
+            category_ids=[c.id for c in (getattr(e["doc"], "categories", None) or []) if getattr(c, "id", None) is not None],
+            category_names=[c.name for c in (getattr(e["doc"], "categories", None) or [])],
+>>>>>>> backup/feature-snapshot
         )
         for e in sliced
     ]
@@ -695,7 +740,17 @@ def run_ocr_and_auto_category(
     print(f"[OCR] Auto-Kategorien gefunden: {cat_ids} fuer Doc {doc.id}")
 
     try:
+<<<<<<< HEAD
         current_doc = get_document_for_user(db, user_id, doc.id) or doc
+=======
+        current_doc = (
+            db.query(Document)
+            .filter(Document.owner_user_id == user_id, Document.id == doc.id)
+            .options(selectinload(Document.categories))
+            .first()
+        ) or doc
+
+>>>>>>> backup/feature-snapshot
         existing_ids: List[int] = []
         for c in (getattr(current_doc, "categories", None) or []):
             cid = getattr(c, "id", None)
@@ -731,4 +786,3 @@ def get_owned_or_404(db: Session, user_id: int, doc_id: int):
 def delete_owned_document(db: Session, user_id: int, doc_id: int) -> bool:
     _ = get_owned_or_404(db, user_id, doc_id)
     return soft_delete_document(db, doc_id, user_id)
-

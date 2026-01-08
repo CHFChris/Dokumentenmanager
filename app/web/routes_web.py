@@ -579,11 +579,7 @@ def documents_page(
 
     query = (
         db.query(Document)
-<<<<<<< HEAD
-        .options(selectinload(Document.categories))
-=======
         .options(selectinload(Document.categories), selectinload(Document.versions))
->>>>>>> backup/feature-snapshot
         .filter(
             Document.owner_user_id == user.id,
             Document.is_deleted == False,  # noqa: E712
@@ -659,22 +655,9 @@ def documents_page(
             new_list.append(d)
         filtered_docs_orm = new_list
 
-<<<<<<< HEAD
-    filtered_docs = [
-        {
-            "id": d.id,
-            "name": getattr(d, "filename", None) or "",
-            "size": getattr(d, "size_bytes", 0) or 0,
-            "created_at": getattr(d, "created_at", None),
-            "categories": list(getattr(d, "categories", None) or []),
-        }
-        for d in filtered_docs_orm
-    ]
-=======
     # --- ganz am Ende: packen + ranken
     packed_docs = _search_rank_pack_docs(filtered_docs_orm, q or "")
     filtered_docs = packed_docs
->>>>>>> backup/feature-snapshot
 
     categories = list_categories_for_user(db, user.id)
 
@@ -695,14 +678,6 @@ def documents_page(
     )
 
 
-<<<<<<< HEAD
-@router.post("/documents/bulk-assign-category", include_in_schema=False)
-async def documents_bulk_assign_category(
-    request: Request,
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user_web),
-):
-=======
 @router.get("/search", response_class=HTMLResponse)
 def search_page(
     request: Request,
@@ -743,7 +718,6 @@ async def documents_bulk_assign_category(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
->>>>>>> backup/feature-snapshot
     form = await request.form()
 
     raw_docs = form.getlist("doc_ids")
@@ -779,10 +753,6 @@ def document_detail_page(
     categories = list_categories_for_user(db, user.id)
     versions = list_document_versions(db, doc.id)
 
-<<<<<<< HEAD
-    # 5.1: current_category_ids an Template geben
-=======
->>>>>>> backup/feature-snapshot
     current_category_ids = [c.id for c in (getattr(doc, "categories", None) or [])]
 
     return templates.TemplateResponse(

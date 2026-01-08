@@ -1,7 +1,11 @@
-﻿# app/api/routes/upload.py
+# app/api/routes/upload.py
 from __future__ import annotations
 
+<<<<<<< HEAD
+from typing import Final, Optional
+=======
 from typing import Final, List, Optional, Tuple
+>>>>>>> backup/feature-snapshot
 
 import os
 import mimetypes
@@ -17,12 +21,18 @@ from app.db.database import get_db
 from app.schemas.document import DocumentOut
 from app.utils.files import ensure_dir
 from app.utils.crypto_utils import encrypt_bytes, compute_integrity_tag
+<<<<<<< HEAD
+from app.repositories.document_repo import create_document_with_version
+from app.services.document_service import run_ocr_and_auto_category  # wichtig
+from app.services.document_category_service import set_document_categories  # NEU
+=======
 from app.repositories.document_repo import create_document_with_version, get_by_sha_or_name_size
 from app.services.document_service import run_ocr_and_auto_category
 from app.services.document_category_service import set_document_categories
 
 # IMMER sichtbar: zeigt dir beim Serverstart exakt, welche Datei geladen wurde
 print("LOADED upload.py FROM:", __file__)
+>>>>>>> backup/feature-snapshot
 
 router = APIRouter(prefix="", tags=["upload"])
 
@@ -38,6 +48,21 @@ FILES_DIR: Final[str] = getattr(settings, "FILES_DIR", "./data/files")
 # Debug: immer an (damit du es IMMER siehst)
 UPLOAD_DEBUG: Final[bool] = True
 
+<<<<<<< HEAD
+def _parse_category_ids(raw: Optional[str]) -> list[int]:
+    if not raw:
+        return []
+    out: list[int] = []
+    for part in raw.split(","):
+        part = (part or "").strip()
+        if not part:
+            continue
+        try:
+            out.append(int(part))
+        except ValueError:
+            continue
+    return list(dict.fromkeys(out))
+=======
 
 def _d(msg: str) -> None:
     # IMMER drucken
@@ -59,11 +84,11 @@ def find_duplicate(
     size: Optional[int],
 ) -> Tuple[Optional[object], Optional[str]]:
     """
-    Pr├╝ft Duplikat ├╝ber:
+    Prüft Duplikat über:
     - checksum_sha256 (falls sha256 gesetzt)
     - filename (case-insensitive) + size_bytes (falls beides gesetzt)
 
-    R├╝ckgabe: (Document|None, "sha256"|"name_size"|None)
+    Rückgabe: (Document|None, "sha256"|"name_size"|None)
     """
     sha256 = (sha256 or "").strip()
     name = (name or "").strip()
@@ -102,9 +127,9 @@ def _normalize_category_ids(raw: Optional[List[int]]) -> List[int]:
     """
     FastAPI liefert bei Checkboxen/Form-Listen bereits List[int].
     Diese Funktion:
-    - entfernt ung├╝ltige Werte
+    - entfernt ungültige Werte
     - entfernt Duplikate
-    - beh├ñlt Reihenfolge
+    - behält Reihenfolge
     """
     if not raw:
         return []
@@ -127,14 +152,19 @@ def _cat_ids_from_doc(doc) -> List[int]:
         if isinstance(cid, int):
             ids.append(cid)
     return ids
+>>>>>>> backup/feature-snapshot
 
 
 async def _handle_upload_common(
     db: Session,
     user: CurrentUser,
     file: UploadFile,
+<<<<<<< HEAD
+    category_ids: Optional[str] = None,
+=======
     category_ids: Optional[List[int]] = None,
     allow_duplicate: bool = False,
+>>>>>>> backup/feature-snapshot
 ):
     _d(f"[UPLOAD][DEBUG] ENTER _handle_upload_common user_id={getattr(user, 'id', None)} allow_duplicate={allow_duplicate}")
     _d(f"[UPLOAD][DEBUG] raw category_ids param = {category_ids!r} type={type(category_ids)!r}")
@@ -165,7 +195,7 @@ async def _handle_upload_common(
     raw_bytes = await file.read()
     _d(f"[UPLOAD][DEBUG] read bytes={len(raw_bytes)}")
 
-    # Gr├Â├ƒenlimit
+    # Größenlimit
     max_bytes = MAX_UPLOAD_MB * 1024 * 1024
     size_bytes = len(raw_bytes)
     if size_bytes > max_bytes:
@@ -174,7 +204,7 @@ async def _handle_upload_common(
             detail=f"file too large (>{MAX_UPLOAD_MB} MB)",
         )
 
-    # HMAC statt SHA256 (Integrit├ñt)
+    # HMAC statt SHA256 (Integrität)
     sha256_hex = compute_integrity_tag(raw_bytes)
 
     # Duplikatserkennung (Hash oder Name+Groesse) vor dem Schreiben der Datei
@@ -193,7 +223,7 @@ async def _handle_upload_common(
     # interner Name
     stored_name = uuid4().hex
 
-    # verschl├╝sseln
+    # verschlüsseln
     encrypted_bytes = encrypt_bytes(raw_bytes)
 
     # Zielpfad
@@ -222,6 +252,19 @@ async def _handle_upload_common(
 
     _d(f"[UPLOAD][DEBUG] created doc.id={getattr(doc, 'id', None)}")
 
+<<<<<<< HEAD
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    # NEU: Many-to-Many Kategorien manuell setzen (ohne category_id)
+    ids = _parse_category_ids(category_ids)
+    if ids:
+        set_document_categories(db, doc_id=doc.id, user_id=user.id, category_ids=ids)
+        db.refresh(doc)
+
+    # OCR + Auto-Kategorien (Top-N) -> ergänzt später weitere Kategorien
+=======
     # Many-to-Many: alle angehakten Kategorien setzen
     ids = _normalize_category_ids(category_ids)
     _d(f"[UPLOAD][DEBUG] normalized category_ids = {ids}")
@@ -234,6 +277,7 @@ async def _handle_upload_common(
         _d("[UPLOAD][DEBUG] no manual categories selected (ids empty)")
 
     # OCR + Auto-Kategorien
+>>>>>>> backup/feature-snapshot
     try:
         _d(f"[UPLOAD][DEBUG] before OCR categories on doc = {_cat_ids_from_doc(doc)}")
         _d(f"[UPLOAD][DEBUG] calling run_ocr_and_auto_category doc_id={doc.id}")
@@ -254,6 +298,13 @@ async def _handle_upload_common(
 @router.post("/upload", response_model=DocumentOut, status_code=200)
 async def upload_file(
     file: UploadFile = File(...),
+<<<<<<< HEAD
+    category_ids: Optional[str] = Form(None),  # NEU: "1,2,3"
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    doc = await _handle_upload_common(db, user, file, category_ids=category_ids)
+=======
     category_ids: List[int] = Form(default=[]),
     allow_duplicate: bool = Form(False),
     db: Session = Depends(get_db),
@@ -278,6 +329,7 @@ async def upload_file(
 
     categories = getattr(doc, "categories", None) or []
     _d(f"[UPLOAD][DEBUG] /upload response doc_id={doc.id} categories={_cat_ids_from_doc(doc)}")
+>>>>>>> backup/feature-snapshot
 
     return DocumentOut(
         id=doc.id,
@@ -286,14 +338,27 @@ async def upload_file(
         sha256="",
         created_at=getattr(doc, "created_at", None),
         category=None,
+<<<<<<< HEAD
+        category_ids=[c.id for c in (getattr(doc, "categories", None) or []) if isinstance(getattr(c, "id", None), int)],
+        category_names=[c.name for c in (getattr(doc, "categories", None) or []) if getattr(c, "name", None)],
+=======
         category_ids=[c.id for c in categories if isinstance(getattr(c, "id", None), int)],
         category_names=[c.name for c in categories if getattr(c, "name", None)],
+>>>>>>> backup/feature-snapshot
     )
 
 
 @router.post("/upload-web")
 async def upload_web(
     file: UploadFile = File(...),
+<<<<<<< HEAD
+    category_ids: Optional[str] = Form(None),  # NEU: "1,2,3"
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    await _handle_upload_common(db, user, file, category_ids=category_ids)
+    return RedirectResponse(url="/upload", status_code=303)
+=======
     category_ids: List[int] = Form(default=[]),
     allow_duplicate: bool = Form(False),
     db: Session = Depends(get_db),
@@ -317,3 +382,4 @@ async def upload_web(
             url=f"/upload?duplicate=1&existing_id={e.existing_id}",
             status_code=303,
         )
+>>>>>>> backup/feature-snapshot

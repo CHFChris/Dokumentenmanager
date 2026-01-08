@@ -1,14 +1,14 @@
-﻿{# app/web/templates/document_detail.html (oder dein aktuelles Dokumentdetails-Template) #}
+{# app/web/templates/document_detail.html (oder dein aktuelles Dokumentdetails-Template) #}
 {% extends "base.html" %}
-{% block title %}Dokumentdetails Â· SPKH{% endblock %}
+{% block title %}Dokumentdetails · SPKH{% endblock %}
 
 {% block content %}
 <div class="mx-auto max-w-6xl px-4 py-6 space-y-6">
 
   <a href="/documents"
      class="inline-flex items-center text-xs font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]">
-    <span class="mr-1">â†</span>
-    Zur DokumentenÃ¼bersicht
+    <span class="mr-1">←</span>
+    Zur Dokumentenübersicht
   </a>
 
   <div>
@@ -37,7 +37,7 @@
             {% if doc.created_at %}
               {{ doc.created_at.strftime("%d.%m.%Y") }}
             {% else %}
-              â€”
+              —
             {% endif %}
           </span>
         </div>
@@ -54,12 +54,12 @@
         <div class="flex items-center justify-between gap-4">
           <span class="text-[var(--ink-muted)]">MIME-Typ</span>
           <span class="font-mono text-[11px] text-[var(--ink)] truncate max-w-[60%] text-right">
-            {{ doc.mime or "â€”" }}
+            {{ doc.mime or "—" }}
           </span>
         </div>
 
         <div class="flex items-center justify-between gap-4">
-          <span class="text-[var(--ink-muted)]">DateigrÃ¶ÃŸe</span>
+          <span class="text-[var(--ink-muted)]">Dateigröße</span>
           <span class="font-medium text-[var(--ink)]">
             {% if doc.size >= 1024*1024 %}
               {{ (doc.size/1024/1024)|round(2) }} MB
@@ -103,7 +103,10 @@
       </div>
     </div>
 
+<<<<<<< HEAD
     <!-- Quick Actions + Kategorien + Version Upload -->
+=======
+>>>>>>> backup/feature-snapshot
     <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
       <div class="border-b border-slate-200/80 px-5 py-3">
         <h2 class="text-sm font-semibold text-[var(--ink)]">Aktionen</h2>
@@ -132,13 +135,17 @@
                 type="submit"
                 class="inline-flex w-full justify-center rounded-full border border-red-300 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-500/20"
               >
-                LÃ¶schen
+                Löschen
               </button>
             </form>
           </div>
         </div>
 
+<<<<<<< HEAD
         <!-- Kategorien setzen (Checkboxen statt Multi-Select) -->
+=======
+        {# Kategorien: Checkboxen, ohne current_category_ids-Variable (wird im Template aus doc.categories abgeleitet) #}
+>>>>>>> backup/feature-snapshot
         <div class="space-y-2 border-t border-slate-200/80 pt-4">
           <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
             Kategorien
@@ -152,21 +159,35 @@
               action="/documents/{{ doc.id }}/set-categories-web"
               class="flex flex-col gap-3"
             >
+<<<<<<< HEAD
               <!-- Checkboxen rein -->
               <div class="category-checkbox-list">
                 {% for c in categories %}
                   <label class="category-checkbox-item">
+=======
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 py-1">
+                {% for c in categories %}
+                  <label class="flex items-center gap-2 select-none">
+>>>>>>> backup/feature-snapshot
                     <input
                       type="checkbox"
                       name="category_ids"
                       value="{{ c.id }}"
+<<<<<<< HEAD
                       {% if c.id in current_category_ids %}checked{% endif %}
                     />
                     <span>{{ c.name }}</span>
+=======
+                      class="h-4 w-4 rounded border-slate-300"
+                      {% if c.id in current_ids %}checked{% endif %}
+                    >
+                    <span class="text-sm text-[var(--ink)]">{{ c.name }}</span>
+>>>>>>> backup/feature-snapshot
                   </label>
                 {% endfor %}
               </div>
 
+<<<<<<< HEAD
               <!-- Optional CSS (hier lokal im Template) -->
               <style>
                 .category-checkbox-list {
@@ -183,6 +204,8 @@
                 }
               </style>
 
+=======
+>>>>>>> backup/feature-snapshot
               <div class="flex flex-wrap gap-2 pt-1">
                 {% if doc.categories and doc.categories|length > 0 %}
                   {% for c in doc.categories %}
@@ -228,7 +251,7 @@
             <input
               type="text"
               name="note"
-              placeholder="Ã„nderungskommentar (optional)"
+              placeholder="Änderungskommentar (optional)"
               class="w-full rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             >
             <button
@@ -258,7 +281,7 @@
             <thead class="border-b border-slate-200/80 text-left text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
               <tr>
                 <th class="py-2 pr-4">Version</th>
-                <th class="py-2 pr-4">GrÃ¶ÃŸe</th>
+                <th class="py-2 pr-4">Größe</th>
                 <th class="py-2 pr-4">Erstellt</th>
                 <th class="py-2 pr-4">Notiz</th>
                 <th class="py-2 text-right">Aktion</th>
@@ -283,11 +306,11 @@
                     {% if v.created_at %}
                       {{ v.created_at.strftime("%d.%m.%Y %H:%M") }}
                     {% else %}
-                      â€”
+                      —
                     {% endif %}
                   </td>
                   <td class="py-2 pr-4 text-[var(--ink-muted)]">
-                    {{ v.note or "â€”" }}
+                    {{ v.note or "—" }}
                   </td>
                   <td class="py-2 text-right">
                     <form method="post" action="/documents/{{ doc.id }}/restore-version-web" class="inline-flex">
@@ -307,7 +330,7 @@
         </div>
       {% else %}
         <div class="flex flex-col items-center justify-center py-14 text-center text-sm text-[var(--ink-muted)]">
-          <div class="mb-3 text-4xl">ðŸ“</div>
+          <div class="mb-3 text-4xl">📁</div>
           <div class="font-medium text-[var(--ink)] mb-1">Noch keine Versionen vorhanden.</div>
           <p class="text-xs text-[var(--ink-muted)]">
             Lade eine neue Version hoch, um die Historie dieses Dokuments aufzubauen.
@@ -319,4 +342,3 @@
 
 </div>
 {% endblock %}
-
