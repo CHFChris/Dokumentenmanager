@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+import mimetypes
 from datetime import datetime, timezone
 from io import BytesIO
 from tempfile import NamedTemporaryFile
@@ -32,7 +33,8 @@ from app.schemas.document import DocumentListOut, DocumentOut
 from app.services.auto_tagging import suggest_categories_for_document
 from app.services.document_category_service import set_document_categories
 from app.services.ocr_service import ocr_and_clean
-from app.utils.crypto_utils import decrypt_bytes, decrypt_text
+from app.utils.crypto_utils import decrypt_bytes, encrypt_bytes, compute_integrity_tag
+from app.utils.crypto_utils import decrypt_text
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
 # ------------------------------------------------------------
@@ -345,39 +347,81 @@ def search_documents_advanced(
 
 
 # ------------------------------------------------------------
-# Upload (Legacy – aktuell nicht für verschlüsselte Files genutzt)
+# Upload (API /documents/upload)
 # ------------------------------------------------------------
 def upload_document(
     db: Session,
     user_id: int,
     original_name: str,
     file_obj: BinaryIO,
+    content_type: Optional[str] = None,
     category_id: Optional[int] = None,
 ) -> DocumentOut:
+    """Upload ueber die /documents/upload-API.
+
+    Speichert eine hochgeladene Datei inkl. Metadaten in der DB:
+    - Name: original/Anzeige (documents.filename + documents.original_filename)
+    - Groesse: documents.size_bytes
+    - Typ: documents.mime_type
+    - Owner: documents.owner_user_id
+    - Hash: documents.checksum_sha256 (HMAC-SHA256 Integritaetstag)
+
+    Zusaetzlich wird ein eindeutiger interner File-Identifier gesetzt:
+    - documents.stored_name (uuid4 hex, UNIQUE)
+    """
+
+    original_name = os.path.basename((original_name or "").strip()) or "unnamed"
+    display_name = _sanitize_display_name(original_name)
+
+    # MIME bestimmen (UploadFile.content_type -> Fallback ueber Extension)
+    mime = (content_type or "").split(";")[0].strip().lower()
+    if (not mime) or (mime == "application/octet-stream"):
+        guessed, _ = mimetypes.guess_type(display_name)
+        if guessed:
+            mime = guessed.lower()
+    mime_type = mime or None
+
+    # Datei lesen (Klartext)
+    raw_bytes = file_obj.read() if file_obj else b""
+    if raw_bytes is None:
+        raw_bytes = b""
+    size_bytes = len(raw_bytes)
+    if size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    # Hash (Integritaet) ueber Klartext
+    integrity_tag = compute_integrity_tag(raw_bytes)
+
+    # Verschluesseln + speichern
+    encrypted_bytes = encrypt_bytes(raw_bytes)
+
     user_dir = os.path.join(FILES_DIR, str(user_id))
     ensure_dir(user_dir)
 
-    display_name = _sanitize_display_name(original_name)
-    _, target_path = _unique_target_path(user_dir, display_name)
+    stored_name = uuid.uuid4().hex
+    target_path = os.path.join(user_dir, stored_name)
+    while os.path.exists(target_path):
+        stored_name = uuid.uuid4().hex
+        target_path = os.path.join(user_dir, stored_name)
 
-    size_bytes = save_stream_to_file(file_obj, target_path)
-    with open(target_path, "rb") as fh:
-        sha256_hex = sha256_of_stream(fh)
+    with open(target_path, "wb") as f:
+        f.write(encrypted_bytes)
 
+    # DB: Document + Version 1 (inkl. Metadaten)
     doc = create_document_with_version(
         db=db,
         user_id=user_id,
         filename=display_name,
         storage_path=target_path,
         size_bytes=size_bytes,
-        checksum_sha256=sha256_hex,
-        mime_type=None,
+        checksum_sha256=integrity_tag,
+        mime_type=mime_type,
+        note="Initial upload",
+        original_filename=original_name,
+        stored_name=stored_name,
     )
 
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
-
+    # (Legacy) Single-Kategorie setzen (wird als Many-to-Many gespeichert)
     if category_id is not None:
         cat = (
             db.query(Category)
@@ -400,8 +444,6 @@ def upload_document(
                 user_id=user_id,
                 category_ids=new_ids,
             )
-
-            db.refresh(doc)
 
     return DocumentOut(
         id=doc.id,

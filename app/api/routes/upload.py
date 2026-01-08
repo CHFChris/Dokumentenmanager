@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Final, List, Optional, Tuple
 
 import os
+import mimetypes
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Form
@@ -141,7 +142,14 @@ async def _handle_upload_common(
     if not file.filename:
         raise HTTPException(status_code=400, detail="filename is missing")
 
-    content_type = (file.content_type or "").lower()
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+
+    # Fallback: Browser liefert manchmal nur application/octet-stream
+    if (not content_type) or (content_type == "application/octet-stream"):
+        guessed, _ = mimetypes.guess_type(file.filename)
+        if guessed:
+            content_type = guessed.lower()
+
     _d(f"[UPLOAD][DEBUG] filename={file.filename!r} content_type={content_type!r}")
 
     if ALLOWED_MIME and content_type not in ALLOWED_MIME:
@@ -198,26 +206,19 @@ async def _handle_upload_common(
 
     original_name = os.path.basename(file.filename)
 
-    # Datenbank
+    # Datenbank (Metadaten + eindeutiger stored_name)
     doc = create_document_with_version(
         db=db,
         user_id=user.id,
         filename=original_name,
         storage_path=target_path,
         size_bytes=size_bytes,
-        checksum_sha256=sha256_hex,  # jetzt HMAC
+        checksum_sha256=sha256_hex,  # HMAC-SHA256 Integritaetstag
         mime_type=content_type or None,
         note="Initial upload",
+        original_filename=original_name,
+        stored_name=stored_name,
     )
-
-    if hasattr(doc, "original_filename"):
-        doc.original_filename = original_name
-    if hasattr(doc, "stored_name"):
-        doc.stored_name = stored_name
-
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
 
     _d(f"[UPLOAD][DEBUG] created doc.id={getattr(doc, 'id', None)}")
 

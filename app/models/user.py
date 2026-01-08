@@ -74,3 +74,17 @@ class User(Base):
             f"language={self.language!r} "
             f"verified={self.is_verified}>"
         )
+
+    # NEU: UI Benachrichtigungen (Toasts/Modals)
+    ui_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    # NEU: Sicherheitsmail bei Login auf neuem Geraet
+    security_email_new_device_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )

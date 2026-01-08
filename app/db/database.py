@@ -36,9 +36,10 @@ def get_db() -> Generator:
 
 def init_models() -> None:
     import app.models.user  # noqa: F401
-    import app.models.category  # noqa: F401
     import app.models.document  # noqa: F401
+    import app.models.category  # noqa: F401
     import app.models.document_version  # noqa: F401
-    import app.models.document_categories  # noqa: F401
     import app.models.email_verification_token  # noqa: F401
     import app.models.password_reset_token  # noqa: F401
+    import app.models.login_device  # noqa: F401
+

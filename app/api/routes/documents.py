@@ -51,7 +51,7 @@ async def upload(
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return upload_document(db, user.id, file.filename, file.file)
+    return upload_document(db, user.id, file.filename, file.file, content_type=file.content_type)
 
 
 # ------------------------------------------------------------
