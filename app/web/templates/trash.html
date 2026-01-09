@@ -1,0 +1,64 @@
+{# app/web/templates/trash.html #}
+{% extends "base.html" %}
+{% block title %}Papierkorb · Dokumentenmanager{% endblock %}
+
+{% block content %}
+<div class="container mx-auto max-w-6xl py-6 px-4">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Papierkorb</h1>
+      <p class="text-sm text-gray-500 mt-1">
+        Gelöschte Dokumente können innerhalb von 30 Tagen wiederhergestellt werden.
+      </p>
+    </div>
+    <a href="/documents"
+       class="inline-flex items-center px-4 py-2 rounded-xl border border-gray-300 text-sm font-medium
+              text-gray-700 bg-white hover:bg-gray-50 shadow-sm">
+      Zurück zu Dokumenten
+    </a>
+  </div>
+
+  <div class="rounded-2xl border bg-white shadow-sm">
+    <div class="p-4 sm:p-5 border-b border-gray-200">
+      <h2 class="text-sm font-semibold text-gray-800">Gelöschte Dateien</h2>
+    </div>
+
+    {% if not docs %}
+      <div class="p-6 text-sm text-gray-600">
+        Papierkorb ist leer.
+      </div>
+    {% else %}
+      <div class="divide-y divide-gray-200">
+        {% for doc in docs %}
+          <div class="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-medium text-gray-900 truncate">
+                {{ doc.original_filename or doc.filename or ("Dokument #" ~ doc.id) }}
+              </div>
+              <div class="text-xs text-gray-500 mt-1">
+                {% if doc.deleted_at %}
+                  Gelöscht am {{ doc.deleted_at.strftime("%d.%m.%Y %H:%M") }}
+                {% else %}
+                  Gelöscht
+                {% endif %}
+                · ID {{ doc.id }}
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <form method="post" action="/trash/{{ doc.id }}/restore-web">
+                <button type="submit"
+                        class="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">
+                  Wiederherstellen
+                </button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

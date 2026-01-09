@@ -51,6 +51,8 @@ from app.repositories.document_repo import (
     add_version,
     get_version_owned,
     get_document_owned,
+    list_deleted_documents_for_user,
+    restore_soft_deleted_document,
 )
 
 from app.models.category import Category
@@ -200,7 +202,7 @@ def _search_rank_pack_docs(docs: list[Document], q: str) -> list[dict]:
 
         last_upd = _doc_last_updated(d)
         age_days = max(0, int((now - last_upd).total_seconds() // 86400))
-        recency_bonus = max(0, 30 - min(age_days, 30))  # 0..30
+        recency_bonus = max(0, 30 - min(age_days, 30))
 
         score = hit_score * 100 + recency_bonus
 
@@ -361,7 +363,6 @@ def upload_page(
     )
 
 
-# NOTE: renamed to avoid colliding with API POST /upload-web (the one with duplicate logic)
 @router.post("/upload-web-legacy", include_in_schema=False)
 async def upload_web_legacy(
     request: Request,
@@ -655,7 +656,6 @@ def documents_page(
             new_list.append(d)
         filtered_docs_orm = new_list
 
-    # --- ganz am Ende: packen + ranken
     packed_docs = _search_rank_pack_docs(filtered_docs_orm, q or "")
     filtered_docs = packed_docs
 
@@ -710,6 +710,36 @@ def search_page(
             "active": "search",
         },
     )
+
+
+@router.get("/trash", response_class=HTMLResponse)
+def trash_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    docs = list_deleted_documents_for_user(db, user.id)
+    return templates.TemplateResponse(
+        "trash.html",
+        {
+            "request": request,
+            "user": user,
+            "docs": docs,
+            "active": "trash",
+        },
+    )
+
+
+@router.post("/trash/{doc_id}/restore-web", include_in_schema=False)
+def trash_restore(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    ok = restore_soft_deleted_document(db, doc_id, user.id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return RedirectResponse(url="/trash", status_code=303)
 
 
 @router.post("/documents/bulk-assign-category", include_in_schema=False)
@@ -841,10 +871,11 @@ def document_set_category(
 @router.get("/documents/{doc_id}/download")
 def document_download(
     doc_id: int,
+    inline: bool = Query(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    return download_response(db, user.id, doc_id)
+    return download_response(db, user.id, doc_id, inline=inline)
 
 
 @router.post("/documents/{doc_id}/rename-web", include_in_schema=False)

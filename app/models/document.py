@@ -66,6 +66,12 @@ class Document(Base):
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

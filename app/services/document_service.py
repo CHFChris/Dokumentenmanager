@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime
+import mimetypes
+from datetime import datetime, timezone
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 from typing import BinaryIO, Optional, List, Dict
+from urllib.parse import quote
 
 import sqlalchemy as sa
 from fastapi import HTTPException
@@ -32,7 +34,12 @@ from app.schemas.document import DocumentListOut, DocumentOut
 from app.services.auto_tagging import suggest_categories_for_document
 from app.services.document_category_service import set_document_categories
 from app.services.ocr_service import ocr_and_clean
-from app.utils.crypto_utils import decrypt_bytes
+from app.utils.crypto_utils import (
+    decrypt_bytes,
+    decrypt_text,
+    encrypt_bytes,
+    compute_integrity_tag,
+)
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 
 # ------------------------------------------------------------
@@ -42,7 +49,7 @@ FILES_DIR = getattr(settings, "FILES_DIR", "./data/files")
 
 SIMPLE_STOPWORDS = {
     "der", "die", "das", "und", "oder", "ein", "eine", "einer", "einem", "einen",
-    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "fÃ¼r",
+    "den", "im", "in", "ist", "sind", "war", "waren", "von", "mit", "auf", "für",
     "an", "am", "als", "zu", "zum", "zur", "bei", "aus", "dem",
     "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "at", "by",
     "this", "that", "these", "those", "it", "its", "be", "was", "were", "are",
@@ -354,10 +361,10 @@ def search_documents_advanced(
             name=e["doc"].filename,
             size=e["doc"].size_bytes,
             sha256="",
-            created_at=getattr(entry["doc"], "created_at", None),
-            category=_categories_to_string(entry["doc"]),
-            category_ids=_category_ids(entry["doc"]),
-            category_names=[c.name for c in (getattr(entry["doc"], "categories", None) or [])],
+            created_at=getattr(e["doc"], "created_at", None),
+            category=_categories_to_string(e["doc"]),
+            category_ids=_category_ids(e["doc"]),
+            category_names=[c.name for c in (getattr(e["doc"], "categories", None) or [])],
         )
         for e in sliced
     ]
@@ -527,15 +534,50 @@ def get_document_detail(db: Session, user_id: int, doc_id: int) -> dict:
     }
 
 
-def download_response(db: Session, user_id: int, doc_id: int) -> StreamingResponse:
+def _resolve_existing_file_path(user_id: int, doc: Document) -> Optional[str]:
+    candidates: list[str] = []
+
+    def add(p: Optional[str]) -> None:
+        if p and p not in candidates:
+            candidates.append(p)
+
+    sp = getattr(doc, "storage_path", None)
+    add(sp)
+
+    if sp:
+        add(os.path.normpath(sp))
+        add(os.path.normpath(sp.replace("\\", "/")))
+
+        if not os.path.isabs(sp):
+            add(os.path.abspath(sp))
+            add(os.path.abspath(os.path.normpath(sp)))
+            add(os.path.abspath(os.path.join(os.getcwd(), sp.lstrip("./\\"))))
+
+    stored = getattr(doc, "stored_name", None)
+    if stored:
+        add(os.path.join(FILES_DIR, str(user_id), stored))
+        add(os.path.abspath(os.path.join(FILES_DIR, str(user_id), stored)))
+
+    for p in candidates:
+        try:
+            if p and os.path.exists(p):
+                return p
+        except Exception:
+            continue
+
+    return None
+
+
+def download_response(db: Session, user_id: int, doc_id: int, inline: bool = False) -> StreamingResponse:
     doc = get_document_for_user(db, user_id, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    if not doc.storage_path or not os.path.exists(doc.storage_path):
+    path = _resolve_existing_file_path(user_id, doc)
+    if not path:
         raise HTTPException(status_code=404, detail="Stored file missing on disk")
 
-    with open(doc.storage_path, "rb") as fh:
+    with open(path, "rb") as fh:
         encrypted = fh.read()
 
     try:
@@ -544,13 +586,22 @@ def download_response(db: Session, user_id: int, doc_id: int) -> StreamingRespon
         raise HTTPException(status_code=500, detail="Failed to decrypt file")
 
     stream = BytesIO(decrypted)
+
     filename = getattr(doc, "original_filename", None) or doc.filename or f"document-{doc.id}"
+    filename = filename.replace('"', "").strip() or f"document-{doc.id}"
+
+    disp = "inline" if inline else "attachment"
+    ascii_fallback = filename.encode("ascii", "ignore").decode("ascii").replace('"', "").strip()
+    if not ascii_fallback:
+        ascii_fallback = f"document-{doc.id}"
+
+    cd = f"{disp}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
 
     return StreamingResponse(
         stream,
         media_type=doc.mime_type or "application/octet-stream",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": cd,
             "X-Content-Type-Options": "nosniff",
         },
     )
@@ -731,4 +782,3 @@ def get_owned_or_404(db: Session, user_id: int, doc_id: int):
 def delete_owned_document(db: Session, user_id: int, doc_id: int) -> bool:
     _ = get_owned_or_404(db, user_id, doc_id)
     return soft_delete_document(db, doc_id, user_id)
-

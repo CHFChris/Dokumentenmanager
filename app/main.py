@@ -12,6 +12,7 @@ from fastapi.openapi.utils import get_openapi
 
 # --- DB Bootstrap ---
 from app.db.database import init_models
+from app.services.trash_service import start_trash_cleanup_task
 
 # --- API-Router (JSON + Profile) ---
 from app.api.routes import (
@@ -52,8 +53,9 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Startup
 # =============================================================================
 @app.on_event("startup")
-def on_startup() -> None:
+async def on_startup() -> None:
     init_models()
+    start_trash_cleanup_task()
 
 
 # Debug-OCR Router
@@ -70,7 +72,6 @@ app.include_router(auth_routes.router, prefix="/auth")
 app.include_router(files_routes.router, prefix="/files")
 app.include_router(users_routes.router, prefix="/users")
 app.include_router(profile_routes.router)
-
 
 app.include_router(upload_routes.router)                      # /upload
 app.include_router(categories_api_routes.router)              # /api/categories/...
