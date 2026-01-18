@@ -34,4 +34,5 @@ def init_models() -> None:
     import app.models.document_categories  # noqa: F401
     import app.models.email_verification_token  # noqa: F401
     import app.models.password_reset_token  # noqa: F401
+    import app.models.mfa_code  # noqa: F401
 

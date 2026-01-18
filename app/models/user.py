@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.document import Document
     from app.models.email_verification_token import EmailVerificationToken
     from app.models.password_reset_token import PasswordResetToken
+    from app.models.mfa_code import MFACode
 
 
 class User(Base):
@@ -41,7 +42,15 @@ class User(Base):
     language: Mapped[Optional[str]] = mapped_column(
         String(10),
         nullable=True,
-        default="de"
+        default="de",
+    )
+
+    # NEU: MFA (2FA) Felder
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mfa_method: Mapped[Optional[str]] = mapped_column(
+        String(16),
+        nullable=True,
+        default="email",
     )
 
     documents: Mapped[List["Document"]] = relationship(
@@ -65,15 +74,13 @@ class User(Base):
         lazy="selectin",
     )
 
-    def __repr__(self) -> str:
-        return (
-            f"<User id={self.id} "
-            f"username={self.username!r} "
-            f"email={self.email!r} "
-            f"role_id={self.role_id} "
-            f"language={self.language!r} "
-            f"verified={self.is_verified}>"
-        )
+    # NEU: MFA Codes Relation
+    mfa_codes: Mapped[List["MFACode"]] = relationship(
+        "MFACode",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     # NEU: UI Benachrichtigungen (Toasts/Modals)
     ui_notifications_enabled: Mapped[bool] = mapped_column(
@@ -88,3 +95,13 @@ class User(Base):
         nullable=False,
         default=True,
     )
+
+    def __repr__(self) -> str:
+        return (
+            f"<User id={self.id} "
+            f"username={self.username!r} "
+            f"email={self.email!r} "
+            f"role_id={self.role_id} "
+            f"language={self.language!r} "
+            f"verified={self.is_verified}>"
+        )
