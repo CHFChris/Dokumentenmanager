@@ -21,6 +21,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.exc import OperationalError
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
@@ -28,6 +29,7 @@ from app.core.config import settings
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
 from app.utils.crypto_utils import decrypt_text
 
+from app.services.auth_service import verify_login
 from app.services.document_service import (
     dashboard_stats,
     list_documents,
@@ -55,6 +57,7 @@ from app.repositories.document_repo import (
     restore_soft_deleted_document,
 )
 
+from app.models.user import User
 from app.models.category import Category
 from app.models.document import Document
 
@@ -308,6 +311,35 @@ def dashboard(
             "q": "",
             "error": None,
             "active": "dashboard",
+        },
+    )
+
+
+# -------------------------------------------------------------------
+# PROFIL (Seite)
+# -------------------------------------------------------------------
+@router.get("/profile", response_class=HTMLResponse, include_in_schema=False)
+@router.get("/profile/", response_class=HTMLResponse, include_in_schema=False)
+def profile_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    # Session-gebundenes ORM-User-Objekt fuer Template + Updates
+    db_user = db.query(User).filter(User.id == user.id).first()
+    if not db_user:
+        return RedirectResponse(url="/auth/login-web", status_code=303)
+
+    return templates.TemplateResponse(
+        "profile.html",
+        {
+            "request": request,
+            "user": db_user,
+            # Falls dein Template diese Variablen verwendet
+            "pw_error": None,
+            "pw_success": None,
+            "delete_error": None,
+            "delete_success": None,
         },
     )
 
@@ -624,7 +656,7 @@ def documents_page(
 
     if filetype:
         ext = filetype.lower().lstrip(".")
-        new_list: List[Document] = []
+        new_list = []
         for d in filtered_docs_orm:
             base_name = (getattr(d, "filename", "") or "").lower()
             if base_name.endswith("." + ext):
@@ -643,7 +675,7 @@ def documents_page(
     dt = _parse_date(date_to)
 
     if df or dt:
-        new_list: List[Document] = []
+        new_list = []
         for d in filtered_docs_orm:
             created = getattr(d, "created_at", None)
             if not created:
@@ -1010,3 +1042,86 @@ def security_info_page(
             "active": "security-info",
         },
     )
+
+
+# -------------------------------------------------------------------
+# MFA Enable/Disable (Web) - eindeutige URLs, keine JSON-Kollisionen
+# -------------------------------------------------------------------
+
+@router.post("/profile/mfa/disable", include_in_schema=False)
+async def profile_mfa_disable(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    form = await request.form()
+    password = (form.get("password") or "").strip()
+    password_confirm = (form.get("password_confirm") or "").strip()
+
+    if not password or not password_confirm:
+        return RedirectResponse(url="/profile/?mfa_error=missing_fields", status_code=303)
+
+    if password != password_confirm:
+        return RedirectResponse(url="/profile/?mfa_error=pass_mismatch", status_code=303)
+
+    db_user = db.query(User).filter(User.id == user.id).first()
+    if not db_user:
+        return RedirectResponse(url="/auth/login-web", status_code=303)
+
+    try:
+        pre = verify_login(db, identifier=getattr(db_user, "email", None), password=password)
+    except OperationalError:
+        return RedirectResponse(url="/profile/?mfa_error=db_down", status_code=303)
+
+    if pre is None:
+        return RedirectResponse(url="/profile/?mfa_error=bad_password", status_code=303)
+
+    db_user.mfa_enabled = False
+    if hasattr(db_user, "mfa_opt_out"):
+        db_user.mfa_opt_out = True
+
+    db.add(db_user)
+    db.commit()
+
+    resp = RedirectResponse(url="/profile/?mfa=disabled", status_code=303)
+    resp.delete_cookie(key="access_token", path="/", samesite="lax", secure=False, httponly=True)
+    return resp
+
+
+@router.post("/profile/mfa/enable", include_in_schema=False)
+async def profile_mfa_enable(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
+):
+    form = await request.form()
+    password = (form.get("password") or "").strip()
+    password_confirm = (form.get("password_confirm") or "").strip()
+
+    if not password or not password_confirm:
+        return RedirectResponse(url="/profile/?mfa_error=missing_fields", status_code=303)
+
+    if password != password_confirm:
+        return RedirectResponse(url="/profile/?mfa_error=pass_mismatch", status_code=303)
+
+    db_user = db.query(User).filter(User.id == user.id).first()
+    if not db_user:
+        return RedirectResponse(url="/auth/login-web", status_code=303)
+
+    try:
+        pre = verify_login(db, identifier=getattr(db_user, "email", None), password=password)
+    except OperationalError:
+        return RedirectResponse(url="/profile/?mfa_error=db_down", status_code=303)
+
+    if pre is None:
+        return RedirectResponse(url="/profile/?mfa_error=bad_password", status_code=303)
+
+    db_user.mfa_enabled = True
+    db_user.mfa_method = "email"
+    if hasattr(db_user, "mfa_opt_out"):
+        db_user.mfa_opt_out = False
+
+    db.add(db_user)
+    db.commit()
+
+    return RedirectResponse(url="/profile/?mfa=enabled", status_code=303)

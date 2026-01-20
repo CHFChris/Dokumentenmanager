@@ -53,6 +53,9 @@ class User(Base):
         default="email",
     )
 
+    # NEU: MFA Opt-Out (User kann MFA-Erzwingung ausnehmen)
+    mfa_opt_out: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     documents: Mapped[List["Document"]] = relationship(
         "Document",
         back_populates="owner",
@@ -89,7 +92,7 @@ class User(Base):
         default=True,
     )
 
-    # NEU: Sicherheitsmail bei Login auf neuem Geraet
+    # NEU: Sicherheitsmail bei Login auf neuem Gerät
     security_email_new_device_enabled: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

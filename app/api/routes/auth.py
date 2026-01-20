@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Union
@@ -27,11 +28,11 @@ from app.services.email_verification_service import (
 )
 from app.services.password_reset_service import complete_password_reset, start_password_reset
 
-# ---- Option A / B: LoginOut aliasieren ----
 try:
     from app.schemas.auth import LoginOut  # type: ignore
 except Exception:
     from app.schemas.auth import TokenOut as LoginOut  # type: ignore
+
 
 router = APIRouter(tags=["Auth"])
 
@@ -50,7 +51,7 @@ def _get_user_by_identifier(db: Session, identifier: str) -> Optional[User]:
 
 
 def _issue_login_after_mfa(db: Session, user: User):
-    if not bool(user.is_verified):
+    if not bool(getattr(user, "is_verified", False)):
         raise HTTPException(status_code=403, detail="Account not verified")
 
     for mod_name, fn_name in [
@@ -81,12 +82,10 @@ def _issue_login_after_mfa(db: Session, user: User):
 
     try:
         from jose import jwt as jose_jwt  # type: ignore
-
         token = jose_jwt.encode(payload, secret, algorithm=alg)
     except Exception:
         try:
             import jwt as pyjwt  # type: ignore
-
             token = pyjwt.encode(payload, secret, algorithm=alg)
         except Exception:
             token = None
@@ -113,9 +112,22 @@ def _issue_login(
     return _issue_login_after_mfa(db, user)
 
 
-# ============================================================
+def _auto_enable_mfa_after_login(db: Session, user: Optional[User]) -> None:
+    if not user:
+        return
+    if bool(getattr(user, "mfa_opt_out", False)):
+        return
+    if bool(getattr(user, "mfa_enabled", False)):
+        return
+    user.mfa_enabled = True
+    user.mfa_method = "email"
+    db.add(user)
+    db.commit()
+
+
+# =============================================================================
 # API: JSON Endpunkte
-# ============================================================
+# =============================================================================
 
 @router.post(
     "/register",
@@ -167,17 +179,27 @@ def api_login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=503, detail=str(ex))
         return MfaChallengeOut(challenge_id=str(row.id))
 
-    return _issue_login(db, user, identifier=body.identifier, password=body.password)
+    data = _issue_login(db, user, identifier=body.identifier, password=body.password)
+    _auto_enable_mfa_after_login(db, user)
+    return data
 
 
 @router.post("/mfa/verify", openapi_extra={"security": []})
 def mfa_verify(payload: MfaVerifyIn, request: Request, db: Session = Depends(get_db)):
     from app.models.mfa_code import MFACode
 
+    cid_raw = str(payload.challenge_id).strip()
+    cid: object = cid_raw
+
+    # UUID bevorzugen
     try:
-        cid: object = int(payload.challenge_id)
+        cid = str(uuid.UUID(cid_raw))
     except Exception:
-        cid = payload.challenge_id
+        # Fallback: int (falls alte DB mit int IDs)
+        try:
+            cid = int(cid_raw)
+        except Exception:
+            cid = cid_raw
 
     row = db.query(MFACode).filter(MFACode.id == cid, MFACode.purpose == "login").first()
     if not row:
@@ -194,6 +216,10 @@ def mfa_verify(payload: MfaVerifyIn, request: Request, db: Session = Depends(get
     return _issue_login(db, user)
 
 
+# =============================================================================
+# WEB: MFA Verify + Logout
+# =============================================================================
+
 @router.post("/mfa/verify-web", openapi_extra={"security": []})
 def mfa_verify_web(
     request: Request,
@@ -204,16 +230,21 @@ def mfa_verify_web(
 ):
     from app.models.mfa_code import MFACode
 
+    cid_raw = str(challenge_id).strip()
+    cid: object = cid_raw
     try:
-        cid: object = int(challenge_id)
+        cid = str(uuid.UUID(cid_raw))
     except Exception:
-        cid = challenge_id
+        try:
+            cid = int(cid_raw)
+        except Exception:
+            cid = cid_raw
 
     row = db.query(MFACode).filter(MFACode.id == cid, MFACode.purpose == "login").first()
     if not row:
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Code.."},
+            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Code."},
             status_code=400,
         )
 
@@ -221,7 +252,7 @@ def mfa_verify_web(
     if not ok:
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Code.."},
+            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Code."},
             status_code=401,
         )
 
@@ -229,7 +260,7 @@ def mfa_verify_web(
     if not user:
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Benutzer.."},
+            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Benutzer."},
             status_code=400,
         )
 
@@ -260,7 +291,6 @@ def api_logout(response: Response):
         secure=False,
         httponly=True,
     )
-    response.status_code = 204
     return response
 
 
@@ -291,9 +321,9 @@ async def logout_web(request: Request):
     return resp
 
 
-# ----------------------------
-# JSON: Passwort-Reset (Start)
-# ----------------------------
+# =============================================================================
+# Passwort-Reset (JSON)
+# =============================================================================
 
 class PasswordResetStartIn(BaseModel):
     email: EmailStr
@@ -309,9 +339,9 @@ def password_reset_start(body: PasswordResetStartIn, db: Session = Depends(get_d
     return {"status": "ok"}
 
 
-# ======================
-# WEB: HTML-Formulare
-# ======================
+# =============================================================================
+# WEB: Login / Register / Reset / Verify
+# =============================================================================
 
 @router.get("/login-web", response_class=HTMLResponse, openapi_extra={"security": []})
 def login_form(request: Request):
@@ -333,9 +363,15 @@ def login_submit(
     if pre is None:
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "user": None, "error": "E-Mail/Benutzername oder Passwort falsch.", "bad_login": True},
+            {
+                "request": request,
+                "user": None,
+                "error": "E-Mail/Benutzername oder Passwort falsch.",
+                "bad_login": True,
+            },
             status_code=401,
         )
+
     if pre == "NOT_VERIFIED":
         u = get_by_email(db, identifier) or get_by_email(db, identifier.lower())
         email = u.email if u else identifier
@@ -365,11 +401,19 @@ def login_submit(
 
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {"request": request, "challenge_id": str(row.id), "next": redirect_to, "error": None},
+            {
+                "request": request,
+                "challenge_id": str(row.id),
+                "next": redirect_to,
+                "error": None,
+            },
             status_code=200,
         )
 
     data = login_user(db, identifier=identifier, password=password)
+    user2 = _get_user_by_identifier(db, identifier)
+    _auto_enable_mfa_after_login(db, user2)
+
     redirect_to = request.query_params.get("next") or "/dashboard"
     if not redirect_to.startswith("/"):
         redirect_to = "/dashboard"
@@ -428,6 +472,9 @@ def login_submit_safe(
         )
 
     res = login_user(db, identifier=identifier, password=password)
+    user2 = _get_user_by_identifier(db, identifier)
+    _auto_enable_mfa_after_login(db, user2)
+
     resp = RedirectResponse(url="/dashboard", status_code=303)
     resp.set_cookie(
         key="access_token",
@@ -442,7 +489,10 @@ def login_submit_safe(
 
 @router.get("/register-web", response_class=HTMLResponse, openapi_extra={"security": []})
 def register_form(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request, "user": None, "error": None})
+    return templates.TemplateResponse(
+        "register.html",
+        {"request": request, "user": None, "error": None},
+    )
 
 
 @router.post("/register-web", openapi_extra={"security": []})
@@ -477,13 +527,23 @@ def register_submit(
 
 @router.get("/password-reset", response_class=HTMLResponse, openapi_extra={"security": []})
 def reset_request_form(request: Request):
-    return templates.TemplateResponse("password_reset_request.html", {"request": request, "sent": False})
+    return templates.TemplateResponse(
+        "password_reset_request.html",
+        {"request": request, "sent": False},
+    )
 
 
 @router.post("/password-reset", response_class=HTMLResponse, openapi_extra={"security": []})
-def reset_request_submit(request: Request, email: str = Form(...), db: Session = Depends(get_db)):
+def reset_request_submit(
+    request: Request,
+    email: str = Form(...),
+    db: Session = Depends(get_db),
+):
     start_password_reset(db, email)
-    return templates.TemplateResponse("password_reset_request.html", {"request": request, "sent": True})
+    return templates.TemplateResponse(
+        "password_reset_request.html",
+        {"request": request, "sent": True},
+    )
 
 
 @router.post("/password-reset/start-web", openapi_extra={"security": []})
@@ -498,25 +558,41 @@ def password_reset_start_web(email: str = Form(...), db: Session = Depends(get_d
 
 @router.get("/password-reset/confirm", response_class=HTMLResponse, openapi_extra={"security": []})
 def reset_confirm_form(request: Request, token: str):
-    return templates.TemplateResponse("password_reset_confirm.html", {"request": request, "token": token, "ok": None, "error": None})
+    return templates.TemplateResponse(
+        "password_reset_confirm.html",
+        {"request": request, "token": token, "ok": None, "error": None},
+    )
 
 
 @router.post("/password-reset/confirm", response_class=HTMLResponse, openapi_extra={"security": []})
-def reset_confirm_submit(request: Request, token: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+def reset_confirm_submit(
+    request: Request,
+    token: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
     ok = complete_password_reset(db, token, password)
     if ok:
         return RedirectResponse(url="/auth/login-web?reset=ok", status_code=303)
 
     return templates.TemplateResponse(
         "password_reset_confirm.html",
-        {"request": request, "token": token, "ok": False, "error": "Token ungueltig/abgelaufen oder Passwort-Policy verletzt."},
+        {
+            "request": request,
+            "token": token,
+            "ok": False,
+            "error": "Token ungültig/abgelaufen oder Passwort-Policy verletzt.",
+        },
         status_code=400,
     )
 
 
 @router.get("/verify/sent", response_class=HTMLResponse, openapi_extra={"security": []})
 def verify_sent(request: Request, email: str = Query(...)):
-    return templates.TemplateResponse("verify_sent.html", {"request": request, "email": email})
+    return templates.TemplateResponse(
+        "verify_sent.html",
+        {"request": request, "email": email},
+    )
 
 
 @router.post("/verify/resend", openapi_extra={"security": []})
