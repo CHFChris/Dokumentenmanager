@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, Form, Request, Response, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
@@ -15,25 +15,23 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.models.user import User
-from app.schemas.auth import RegisterIn, LoginIn, UserOut
-from app.schemas.mfa import MfaVerifyIn, MfaChallengeOut
+from app.repositories.user_repo import get_by_email
+from app.schemas.auth import LoginIn, RegisterIn, UserOut
+from app.schemas.mfa import MfaChallengeOut, MfaVerifyIn
+from app.services import mfa_service
+from app.services.auth_service import login_user, register_user, verify_login
+from app.services.email_verification_service import (
+    confirm_verification_token,
+    is_user_verified,
+    resend_verification_email,
+)
+from app.services.password_reset_service import complete_password_reset, start_password_reset
 
+# ---- Option A / B: LoginOut aliasieren ----
 try:
     from app.schemas.auth import LoginOut  # type: ignore
 except Exception:
     from app.schemas.auth import TokenOut as LoginOut  # type: ignore
-
-from app.services.auth_service import register_user, login_user, verify_login
-from app.services.password_reset_service import start_password_reset, complete_password_reset
-
-from app.services.email_verification_service import (
-    confirm_verification_token,
-    resend_verification_email,
-    is_user_verified,
-)
-
-from app.repositories.user_repo import get_by_email
-from app.services import mfa_service
 
 router = APIRouter(tags=["Auth"])
 
@@ -83,10 +81,12 @@ def _issue_login_after_mfa(db: Session, user: User):
 
     try:
         from jose import jwt as jose_jwt  # type: ignore
+
         token = jose_jwt.encode(payload, secret, algorithm=alg)
     except Exception:
         try:
             import jwt as pyjwt  # type: ignore
+
             token = pyjwt.encode(payload, secret, algorithm=alg)
         except Exception:
             token = None
@@ -97,7 +97,12 @@ def _issue_login_after_mfa(db: Session, user: User):
     return {"token": token}
 
 
-def _issue_login(db: Session, user: User, identifier: Optional[str] = None, password: Optional[str] = None):
+def _issue_login(
+    db: Session,
+    user: User,
+    identifier: Optional[str] = None,
+    password: Optional[str] = None,
+):
     if identifier is not None and password is not None:
         res = login_user(db, identifier=identifier, password=password)
         if res == "NOT_VERIFIED":
@@ -108,6 +113,10 @@ def _issue_login(db: Session, user: User, identifier: Optional[str] = None, pass
     return _issue_login_after_mfa(db, user)
 
 
+# ============================================================
+# API: JSON Endpunkte
+# ============================================================
+
 @router.post(
     "/register",
     response_model=UserOut,
@@ -116,13 +125,12 @@ def _issue_login(db: Session, user: User, identifier: Optional[str] = None, pass
 )
 def api_register(body: RegisterIn, db: Session = Depends(get_db)):
     try:
-        data = register_user(
+        return register_user(
             db,
             username=body.username,
             email=body.email,
             password=body.password,
         )
-        return data
     except ValueError as ex:
         msg = str(ex)
         if msg == "EMAIL_EXISTS":
@@ -175,7 +183,7 @@ def mfa_verify(payload: MfaVerifyIn, request: Request, db: Session = Depends(get
     if not row:
         raise HTTPException(status_code=400, detail="Invalid challenge")
 
-    ok = mfa_service.verify_code(db, int(row.user_id), int(row.id), "login", payload.code)
+    ok = mfa_service.verify_code(db, int(row.user_id), str(row.id), "login", payload.code)
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid code")
 
@@ -205,7 +213,7 @@ def mfa_verify_web(
     if not row:
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungueltiger Code."},
+            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Code.."},
             status_code=400,
         )
 
@@ -213,7 +221,7 @@ def mfa_verify_web(
     if not ok:
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungueltiger Code."},
+            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Code.."},
             status_code=401,
         )
 
@@ -221,7 +229,7 @@ def mfa_verify_web(
     if not user:
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungueltiger Benutzer."},
+            {"request": request, "challenge_id": challenge_id, "next": next, "error": "Ungültiger Benutzer.."},
             status_code=400,
         )
 
@@ -252,8 +260,40 @@ def api_logout(response: Response):
         secure=False,
         httponly=True,
     )
-    return Response(status_code=204)
+    response.status_code = 204
+    return response
 
+
+@router.post("/logout-web", include_in_schema=False)
+@router.get("/logout-web", include_in_schema=False)
+async def logout_web(request: Request):
+    try:
+        request.session.clear()
+    except Exception:
+        pass
+
+    accept = (request.headers.get("accept") or "").lower()
+    xrw = (request.headers.get("x-requested-with") or "").lower()
+    wants_json = ("application/json" in accept) or (xrw == "xmlhttprequest")
+
+    if wants_json:
+        resp = JSONResponse({"status": "ok"}, status_code=200)
+    else:
+        resp = RedirectResponse(url="/auth/login-web", status_code=303)
+
+    resp.delete_cookie(
+        key="access_token",
+        path="/",
+        samesite="lax",
+        secure=False,
+        httponly=True,
+    )
+    return resp
+
+
+# ----------------------------
+# JSON: Passwort-Reset (Start)
+# ----------------------------
 
 class PasswordResetStartIn(BaseModel):
     email: EmailStr
@@ -268,6 +308,10 @@ def password_reset_start(body: PasswordResetStartIn, db: Session = Depends(get_d
         raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
     return {"status": "ok"}
 
+
+# ======================
+# WEB: HTML-Formulare
+# ======================
 
 @router.get("/login-web", response_class=HTMLResponse, openapi_extra={"security": []})
 def login_form(request: Request):
@@ -289,17 +333,12 @@ def login_submit(
     if pre is None:
         return templates.TemplateResponse(
             "login.html",
-            {
-                "request": request,
-                "user": None,
-                "error": "E-Mail/Benutzername oder Passwort falsch.",
-                "bad_login": True,
-            },
+            {"request": request, "user": None, "error": "E-Mail/Benutzername oder Passwort falsch.", "bad_login": True},
             status_code=401,
         )
     if pre == "NOT_VERIFIED":
-        user = get_by_email(db, identifier) or get_by_email(db, identifier.lower())
-        email = user.email if user else identifier
+        u = get_by_email(db, identifier) or get_by_email(db, identifier.lower())
+        email = u.email if u else identifier
         return RedirectResponse(url=f"/auth/verify/sent?email={email}", status_code=303)
 
     user = _get_user_by_identifier(db, identifier)
@@ -326,17 +365,11 @@ def login_submit(
 
         return templates.TemplateResponse(
             "mfa_verify.html",
-            {
-                "request": request,
-                "challenge_id": str(row.id),
-                "next": redirect_to,
-                "error": None,
-            },
+            {"request": request, "challenge_id": str(row.id), "next": redirect_to, "error": None},
             status_code=200,
         )
 
     data = login_user(db, identifier=identifier, password=password)
-
     redirect_to = request.query_params.get("next") or "/dashboard"
     if not redirect_to.startswith("/"):
         redirect_to = "/dashboard"
@@ -405,3 +438,110 @@ def login_submit_safe(
         secure=False,
     )
     return resp
+
+
+@router.get("/register-web", response_class=HTMLResponse, openapi_extra={"security": []})
+def register_form(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request, "user": None, "error": None})
+
+
+@router.post("/register-web", openapi_extra={"security": []})
+def register_submit(
+    request: Request,
+    response: Response,
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        _ = register_user(db, username=username, email=email, password=password)
+    except ValueError as ex:
+        msg = str(ex)
+        if msg == "EMAIL_EXISTS":
+            err = "E-Mail bereits vergeben."
+        elif msg == "USERNAME_EXISTS":
+            err = "Benutzername bereits vergeben."
+        elif msg == "WEAK_PASSWORD":
+            err = "Passwort zu schwach: Mindestens 8 Zeichen, 1 Zahl, 1 Sonderzeichen."
+        else:
+            err = "Registrierung fehlgeschlagen."
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "user": None, "error": err},
+            status_code=400,
+        )
+
+    return RedirectResponse(url=f"/auth/verify/sent?email={email}", status_code=303)
+
+
+@router.get("/password-reset", response_class=HTMLResponse, openapi_extra={"security": []})
+def reset_request_form(request: Request):
+    return templates.TemplateResponse("password_reset_request.html", {"request": request, "sent": False})
+
+
+@router.post("/password-reset", response_class=HTMLResponse, openapi_extra={"security": []})
+def reset_request_submit(request: Request, email: str = Form(...), db: Session = Depends(get_db)):
+    start_password_reset(db, email)
+    return templates.TemplateResponse("password_reset_request.html", {"request": request, "sent": True})
+
+
+@router.post("/password-reset/start-web", openapi_extra={"security": []})
+def password_reset_start_web(email: str = Form(...), db: Session = Depends(get_db)):
+    result = start_password_reset(db, email)
+    if result == "NOT_FOUND":
+        raise HTTPException(status_code=404, detail="Diese E-Mail ist nicht registriert.")
+    if result == "RATE_LIMIT":
+        raise HTTPException(status_code=429, detail="Bitte erneut in 10 Minuten versuchen.")
+    return {"status": "ok"}
+
+
+@router.get("/password-reset/confirm", response_class=HTMLResponse, openapi_extra={"security": []})
+def reset_confirm_form(request: Request, token: str):
+    return templates.TemplateResponse("password_reset_confirm.html", {"request": request, "token": token, "ok": None, "error": None})
+
+
+@router.post("/password-reset/confirm", response_class=HTMLResponse, openapi_extra={"security": []})
+def reset_confirm_submit(request: Request, token: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    ok = complete_password_reset(db, token, password)
+    if ok:
+        return RedirectResponse(url="/auth/login-web?reset=ok", status_code=303)
+
+    return templates.TemplateResponse(
+        "password_reset_confirm.html",
+        {"request": request, "token": token, "ok": False, "error": "Token ungueltig/abgelaufen oder Passwort-Policy verletzt."},
+        status_code=400,
+    )
+
+
+@router.get("/verify/sent", response_class=HTMLResponse, openapi_extra={"security": []})
+def verify_sent(request: Request, email: str = Query(...)):
+    return templates.TemplateResponse("verify_sent.html", {"request": request, "email": email})
+
+
+@router.post("/verify/resend", openapi_extra={"security": []})
+def verify_resend(email: str = Form(...), db: Session = Depends(get_db)):
+    res = resend_verification_email(db, email, ttl_hours=24)
+    if res == "NOT_FOUND":
+        raise HTTPException(status_code=404, detail="Diese E-Mail ist nicht registriert.")
+    if res == "ALREADY_VERIFIED":
+        return {"status": "already_verified"}
+    return {"status": "resent"}
+
+
+@router.get("/verify/status", openapi_extra={"security": []})
+def verify_status(email: str, db: Session = Depends(get_db)):
+    return JSONResponse({"verified": is_user_verified(db, email)})
+
+
+@router.get("/verify/confirm", response_class=HTMLResponse, openapi_extra={"security": []})
+def verify_confirm(request: Request, token: str, db: Session = Depends(get_db)):
+    try:
+        user_id = confirm_verification_token(db, token)
+    except Exception:
+        return templates.TemplateResponse("verify_failed.html", {"request": request}, status_code=500)
+
+    if not user_id:
+        return templates.TemplateResponse("verify_failed.html", {"request": request}, status_code=400)
+
+    return templates.TemplateResponse("verify_success.html", {"request": request}, status_code=200)

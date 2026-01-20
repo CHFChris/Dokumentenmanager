@@ -97,11 +97,11 @@ def create_and_send_login_code(
     db.commit()
     db.refresh(row)
 
-    subject = "Dokumentenmanager: Einmalcode fuer Login"
+    subject = "Dokumentenmanager: Einmalcode für Login"
     body = (
         "Ein Login wurde angefordert.\n\n"
         f"Einmalcode: {code}\n"
-        f"Gueltig bis (UTC): {expires_at}\n\n"
+        f"Gültig bis (UTC): {expires_at}\n\n"
         f"IP: {ip or '-'}\n"
         f"User-Agent: {user_agent or '-'}\n"
     )
@@ -131,7 +131,7 @@ def create_and_send_enable_code(db: Session, user_id: int, user_email: str) -> M
     body = (
         "2FA-Aktivierung wurde angefordert.\n\n"
         f"Aktivierungscode: {code}\n"
-        f"Gueltig bis (UTC): {expires_at}\n"
+        f"Gültig bis (UTC): {expires_at}\n"
     )
 
     _send_email_smtp(user_email, subject, body)

@@ -1,5 +1,4 @@
-"""app.main"""
-
+# app/main.py
 from __future__ import annotations
 
 from dotenv import load_dotenv
@@ -9,7 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, Response
 from fastapi.security import HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
@@ -71,6 +70,14 @@ app.include_router(routes_web.router)
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
     return RedirectResponse(url="/dashboard", status_code=302)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    ico_path = STATIC_DIR / "favicon.ico"
+    if ico_path.exists():
+        return FileResponse(str(ico_path))
+    return Response(status_code=204)
 
 
 @app.middleware("http")

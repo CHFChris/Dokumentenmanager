@@ -1,3 +1,4 @@
+# app/services/login_security_service.py
 from __future__ import annotations
 
 import hashlib
@@ -32,10 +33,10 @@ def handle_login_device_and_email(
     user_id: int,
     request: Request,
 ) -> Tuple[bool, Optional[str]]:
-    """Erkennt neues Geraet und sendet optional eine Sicherheitsmail.
+    """Erkennt neues Gerät und sendet optional eine Sicherheitsmail.
 
-    Rueckgabe:
-    - is_new_device: True wenn Fingerprint fuer den User neu war
+    Rückgabe:
+    - is_new_device: True wenn Fingerprint für den User neu war
     - mail_status: None wenn keine Mail gesendet wurde, sonst "sent"|"failed"
     """
     db_user: User | None = db.query(User).filter(User.id == user_id).first()
@@ -80,18 +81,18 @@ def handle_login_device_and_email(
 
     subject = "Sicherheits-Hinweis: Neuer Login"
     text = (
-        "Es gab einen Login in deinen Account von einem neuen Geraet.\n\n"
+        "Es gab einen Login in deinen Account von einem neuen Gerät.\n\n"
         f"Zeit (UTC): {now.isoformat()}\n"
         f"IP: {ip}\n"
         f"User-Agent: {user_agent}\n\n"
-        "Wenn du das nicht warst: Passwort aendern und Account pruefen."
+        "Wenn du das nicht warst: Passwort ändern und Account prüfen."
     )
     html = (
-        "<p>Es gab einen Login in deinen Account von einem <b>neuen Geraet</b>.</p>"
+        "<p>Es gab einen Login in deinen Account von einem <b>neuen Gerät</b>.</p>"
         f"<p><b>Zeit (UTC):</b> {now.isoformat()}<br/>"
         f"<b>IP:</b> {ip}<br/>"
         f"<b>User-Agent:</b> {user_agent}</p>"
-        "<p>Wenn du das nicht warst: Passwort aendern und Account pruefen.</p>"
+        "<p>Wenn du das nicht warst: Passwort ändern und Account prüfen.</p>"
     )
 
     ok = send_mail(db_user.email, subject, html_body=html, text_body=text)

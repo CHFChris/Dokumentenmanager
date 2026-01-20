@@ -1,3 +1,6 @@
+# app/services/ocr_analysis.py
+from __future__ import annotations
+
 import os
 from typing import Optional, List
 
@@ -5,8 +8,11 @@ from PIL import Image
 import pytesseract
 from pdf2image import convert_from_path
 
-# Pfad zu Tesseract (falls nötig anpassen)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Optional: Pfad zu Tesseract über Umgebungsvariable setzen (Windows/Linux).
+# Beispiel (Windows): TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
+_tess_cmd = os.getenv("TESSERACT_CMD", "").strip()
+if _tess_cmd and os.path.exists(_tess_cmd):
+    pytesseract.pytesseract.tesseract_cmd = _tess_cmd
 
 
 def _ocr_image(image: Image.Image, lang: str = "deu+eng") -> str:
@@ -41,7 +47,6 @@ def run_ocr_on_file(
 
     # PDF
     if ext == ".pdf":
-        # falls du Poppler-Pfad brauchst: poppler_path=r"..."
         pages = convert_from_path(path, dpi=dpi, poppler_path=poppler_path)
         texts: List[str] = []
         for i, page in enumerate(pages):
@@ -50,7 +55,6 @@ def run_ocr_on_file(
             texts.append(_ocr_image(page, lang=lang))
         return "\n".join(texts)
 
-    # andere Formate: lieber explizit fehlschlagen statt still "" zurückgeben
     raise ValueError(f"Nicht unterstützte Dateiendung: {ext}")
 
 

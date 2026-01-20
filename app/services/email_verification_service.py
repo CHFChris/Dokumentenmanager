@@ -1,4 +1,4 @@
-# app/services/email_verification_service.py
+#app/services/email_verification_service.py
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -35,42 +35,45 @@ def send_verification_email(db: Session, user, ttl_hours: int = 24) -> bool:
     now = datetime.now(timezone.utc)
     expires = now + timedelta(hours=ttl_hours)
 
-    db.add(EmailVerificationToken(
-        user_id=user.id,
-        token=raw,
-        created_at=now,
-        expires_at=expires,
-        used_at=None,
-    ))
+    db.add(
+        EmailVerificationToken(
+            user_id=user.id,
+            token=raw,
+            created_at=now,
+            expires_at=expires,
+            used_at=None,
+        )
+    )
     db.commit()
 
     link = _build_verify_url(raw)
 
-    subject = "Bitte bestaetige deine E-Mail-Adresse"
+    subject = "Bitte bestätige deine E-Mail-Adresse"
     html = f"""
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2 style="color: #2563eb;">Willkommen beim Dokumentenmanager!</h2>
         <p>Hallo {user.email},</p>
-        <p>um dein Konto zu aktivieren, bestaetige bitte deine E-Mail-Adresse ueber den folgenden Button:</p>
+        <p>um dein Konto zu aktivieren, bestätige bitte deine E-Mail-Adresse über den folgenden Button:</p>
         <p style="margin: 24px 0;">
             <a href="{link}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                E-Mail bestaetigen
+                E-Mail bestätigen
             </a>
         </p>
         <p>Wenn du dich nicht registriert hast, ignoriere diese Nachricht.</p>
-        <p>Viele Gruesse,<br><strong>Dokumentenmanager</strong></p>
+        <p>Viele Grüße,<br><strong>Dokumentenmanager</strong></p>
     </div>
     """.strip()
+
     text = f"""Willkommen beim Dokumentenmanager!
 
 Hallo {user.email},
 
-um dein Konto zu aktivieren, bestaetige bitte deine E-Mail-Adresse ueber folgenden Link:
+um dein Konto zu aktivieren, bestätige bitte deine E-Mail-Adresse über folgenden Link:
 {link}
 
 Wenn du dich nicht registriert hast, ignoriere diese Nachricht.
 
-Viele Gruesse
+Viele Grüße
 Dokumentenmanager
 """.strip()
 
@@ -92,9 +95,11 @@ def confirm_verification_token(db: Session, token: str) -> Optional[int]:
         return None
 
     try:
-        row = db.execute(
-            select(EmailVerificationToken).where(EmailVerificationToken.token == token)
-        ).scalars().first()
+        row = (
+            db.execute(select(EmailVerificationToken).where(EmailVerificationToken.token == token))
+            .scalars()
+            .first()
+        )
     except Exception as e:
         log.error("DB error selecting token: %s", e)
         return None

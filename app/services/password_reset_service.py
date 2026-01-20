@@ -54,7 +54,7 @@ def too_many_recent_requests(db: Session, user_id: int, minutes: int = RATE_LIMI
 def start_password_reset(db: Session, email: str) -> StartStatus:
     """
     Erzeugt einen neuen Reset-Token (Hash wird gespeichert) und sendet eine E-Mail.
-    Rueckgabe:
+    Rückgabe:
       - "OK"          : E-Mail versendet
       - "NOT_FOUND"   : kein User mit E-Mail
       - "RATE_LIMIT"  : zu viele Anfragen in kurzer Zeit
@@ -75,18 +75,18 @@ def start_password_reset(db: Session, email: str) -> StartStatus:
 
     link = f"{PUBLIC_BASE_URL}/auth/password-reset/confirm?token={raw_token}"
 
-    subject = "Passwort zuruecksetzen"
+    subject = "Passwort zurücksetzen"
     text_body = (
         f"Hallo {user.email},\n\n"
-        f"du hast eine Anfrage zum Zuruecksetzen deines Passworts gestellt.\n"
-        f"Link (gueltig {TOKEN_EXPIRE_MINUTES} Minuten):\n\n{link}\n\n"
+        f"du hast eine Anfrage zum Zurücksetzen deines Passworts gestellt.\n"
+        f"Link (gültig {TOKEN_EXPIRE_MINUTES} Minuten):\n\n{link}\n\n"
         f"Wenn du das nicht warst, ignoriere diese E-Mail."
     )
     html_body = (
         f"<p>Hallo <b>{user.email}</b>,</p>"
-        f"<p>du hast eine Anfrage zum Zuruecksetzen deines Passworts gestellt.</p>"
+        f"<p>du hast eine Anfrage zum Zurücksetzen deines Passworts gestellt.</p>"
         f'<p><a href="{link}" target="_blank">Hier klicken, um ein neues Passwort zu setzen</a></p>'
-        f"<p>Der Link ist {TOKEN_EXPIRE_MINUTES} Minuten gueltig.</p>"
+        f"<p>Der Link ist {TOKEN_EXPIRE_MINUTES} Minuten gültig.</p>"
         f"<p>Wenn du das nicht warst, ignoriere diese E-Mail.</p>"
     )
 
@@ -97,16 +97,14 @@ def start_password_reset(db: Session, email: str) -> StartStatus:
 def complete_password_reset(db: Session, raw_token: str, new_password: str) -> bool:
     """
     Validiert den Reset-Token (per Hash) und setzt ein neues Passwort,
-    wenn die Passwort-Policy erfuellt ist. Rueckgabe True bei Erfolg, sonst False.
+    wenn die Passwort-Policy erfüllt ist. Rückgabe True bei Erfolg, sonst False.
     """
     try:
-        # Policy pruefen (fruehzeitig)
         try:
             validate_password(new_password)
         except PasswordPolicyError:
             return False
 
-        # Token gegen Hash validieren
         token_hash_value = hash_token(raw_token)
         rec = get_valid_token(db, token_hash_value)
         if not rec:
@@ -116,16 +114,11 @@ def complete_password_reset(db: Session, raw_token: str, new_password: str) -> b
         if not user:
             return False
 
-        # Passwort setzen
         pwd_hash = hash_password(new_password)
         changed_at = _now_utc()
         update_password_hash_and_changed_at(db, user.id, pwd_hash, changed_at)
 
-        # Token verbrauchen
         mark_used(db, rec)
-
-        # Optional: weitere Tokens invalidieren (falls Repo-Funktion vorhanden)
-        # invalidate_other_tokens(db, user.id, except_token_id=rec.id)
 
         return True
     except Exception:

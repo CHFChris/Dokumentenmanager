@@ -1,14 +1,27 @@
-﻿{# app/web/templates/document_detail.html (oder dein aktuelles Dokumentdetails-Template) #}
+﻿{# app/web/templates/document_detail.html #}
 {% extends "base.html" %}
-{% block title %}Dokumentdetails Â· SPKH{% endblock %}
+{% block title %}Dokumentdetails · Dokumentenmanager{% endblock %}
 
 {% block content %}
+{% set name = doc.name or "" %}
+{% set ext_raw = (doc.ext or doc.extension or doc.file_ext or doc.file_extension or (name.rsplit('.', 1)[-1] if name and '.' in name else "")) %}
+{% set ext = (ext_raw | replace('.', '') | upper) %}
+{% set mime_raw = (doc.mime_type or doc.content_type or doc.mimetype or doc.mime or "") %}
+{% set inferred_mime =
+  "application/pdf" if ext == "PDF"
+  else "image/jpeg" if ext in ["JPG","JPEG"]
+  else "image/png" if ext == "PNG"
+  else "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if ext == "DOCX"
+  else ""
+%}
+{% set mime = (mime_raw if mime_raw else inferred_mime) %}
+
 <div class="mx-auto max-w-6xl px-4 py-6 space-y-6">
 
   <a href="/documents"
      class="inline-flex items-center text-xs font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]">
-    <span class="mr-1">â†</span>
-    Zur DokumentenÃ¼bersicht
+    <span class="mr-1">←</span>
+    Zur Dokumentenübersicht
   </a>
 
   <div>
@@ -16,7 +29,7 @@
       Dokument
     </div>
     <h1 class="text-2xl font-semibold text-[var(--ink)] break-words">
-      {{ doc.name }}
+      {{ name }}
     </h1>
     <p class="mt-1 text-sm text-[var(--ink-muted)]">
       Metadaten, Kategorien, Versionen und Aktionen.
@@ -37,7 +50,7 @@
             {% if doc.created_at %}
               {{ doc.created_at.strftime("%d.%m.%Y") }}
             {% else %}
-              â€”
+              —
             {% endif %}
           </span>
         </div>
@@ -45,28 +58,36 @@
         <div class="flex items-center justify-between gap-4">
           <span class="text-[var(--ink-muted)]">Dateityp</span>
           <span class="inline-flex items-center gap-2">
-            <span class="inline-flex h-6 min-w-[40px] items-center justify-center rounded-full bg-sky-500/10 px-2 text-[11px] font-semibold text-sky-500">
-              {{ doc.ext }}
-            </span>
+            {% if ext %}
+              <span class="inline-flex h-6 min-w-[40px] items-center justify-center rounded-full bg-sky-500/10 px-2 text-[11px] font-semibold text-sky-600">
+                {{ ext }}
+              </span>
+            {% else %}
+              <span class="text-[var(--ink-muted)]">—</span>
+            {% endif %}
           </span>
         </div>
 
         <div class="flex items-center justify-between gap-4">
           <span class="text-[var(--ink-muted)]">MIME-Typ</span>
           <span class="font-mono text-[11px] text-[var(--ink)] truncate max-w-[60%] text-right">
-            {{ doc.mime or "â€”" }}
+            {{ mime if mime else "—" }}
           </span>
         </div>
 
         <div class="flex items-center justify-between gap-4">
-          <span class="text-[var(--ink-muted)]">DateigrÃ¶ÃŸe</span>
+          <span class="text-[var(--ink-muted)]">Dateigröße</span>
           <span class="font-medium text-[var(--ink)]">
-            {% if doc.size >= 1024*1024 %}
-              {{ (doc.size/1024/1024)|round(2) }} MB
-            {% elif doc.size >= 1024 %}
-              {{ (doc.size/1024)|round(0) }} KB
+            {% if doc.size is not none %}
+              {% if doc.size >= 1024*1024 %}
+                {{ (doc.size/1024/1024)|round(2) }} MB
+              {% elif doc.size >= 1024 %}
+                {{ (doc.size/1024)|round(0) }} KB
+              {% else %}
+                {{ doc.size }} B
+              {% endif %}
             {% else %}
-              {{ doc.size }} B
+              —
             {% endif %}
           </span>
         </div>
@@ -74,7 +95,7 @@
         <div class="space-y-1 pt-1">
           <span class="text-[var(--ink-muted)] text-xs">SHA256</span>
           <div class="rounded-xl bg-[var(--bg)]/70 px-3 py-2 font-mono text-[11px] leading-relaxed text-[var(--ink)] break-all border border-slate-200/80">
-            {{ doc.sha256 }}
+            {{ doc.sha256 if doc.sha256 else "—" }}
           </div>
         </div>
 
@@ -88,7 +109,7 @@
             <input
               type="text"
               name="new_name"
-              value="{{ doc.name }}"
+              value="{{ name }}"
               class="w-full rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
               required
             >
@@ -103,7 +124,6 @@
       </div>
     </div>
 
-    <!-- Quick Actions + Kategorien + Version Upload -->
     <div class="rounded-2xl border border-slate-200/80 bg-[var(--card)]/95 shadow-sm">
       <div class="border-b border-slate-200/80 px-5 py-3">
         <h2 class="text-sm font-semibold text-[var(--ink)]">Aktionen</h2>
@@ -132,13 +152,12 @@
                 type="submit"
                 class="inline-flex w-full justify-center rounded-full border border-red-300 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-500/20"
               >
-                LÃ¶schen
+                Löschen
               </button>
             </form>
           </div>
         </div>
 
-        <!-- Kategorien setzen (Checkboxen statt Multi-Select) -->
         <div class="space-y-2 border-t border-slate-200/80 pt-4">
           <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
             Kategorien
@@ -152,7 +171,6 @@
               action="/documents/{{ doc.id }}/set-categories-web"
               class="flex flex-col gap-3"
             >
-              <!-- Checkboxen rein -->
               <div class="category-checkbox-list">
                 {% for c in categories %}
                   <label class="category-checkbox-item">
@@ -160,14 +178,13 @@
                       type="checkbox"
                       name="category_ids"
                       value="{{ c.id }}"
-                      {% if c.id in current_category_ids %}checked{% endif %}
+                      {% if c.id in current_ids %}checked{% endif %}
                     />
                     <span>{{ c.name }}</span>
                   </label>
                 {% endfor %}
               </div>
 
-              <!-- Optional CSS (hier lokal im Template) -->
               <style>
                 .category-checkbox-list {
                   display: grid;
@@ -228,7 +245,7 @@
             <input
               type="text"
               name="note"
-              placeholder="Ã„nderungskommentar (optional)"
+              placeholder="Änderungskommentar (optional)"
               class="w-full rounded-xl border border-slate-300 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             >
             <button
@@ -258,7 +275,7 @@
             <thead class="border-b border-slate-200/80 text-left text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
               <tr>
                 <th class="py-2 pr-4">Version</th>
-                <th class="py-2 pr-4">GrÃ¶ÃŸe</th>
+                <th class="py-2 pr-4">Größe</th>
                 <th class="py-2 pr-4">Erstellt</th>
                 <th class="py-2 pr-4">Notiz</th>
                 <th class="py-2 text-right">Aktion</th>
@@ -271,30 +288,34 @@
                     v{{ v.version_number or "?" }}
                   </td>
                   <td class="py-2 pr-4 text-[var(--ink)]">
-                    {% if v.size_bytes >= 1024*1024 %}
-                      {{ (v.size_bytes/1024/1024)|round(2) }} MB
-                    {% elif v.size_bytes >= 1024 %}
-                      {{ (v.size_bytes/1024)|round(0) }} KB
+                    {% if v.size_bytes is not none %}
+                      {% if v.size_bytes >= 1024*1024 %}
+                        {{ (v.size_bytes/1024/1024)|round(2) }} MB
+                      {% elif v.size_bytes >= 1024 %}
+                        {{ (v.size_bytes/1024)|round(0) }} KB
+                      {% else %}
+                        {{ v.size_bytes }} B
+                      {% endif %}
                     {% else %}
-                      {{ v.size_bytes }} B
+                      —
                     {% endif %}
                   </td>
                   <td class="py-2 pr-4 text-[var(--ink)]">
                     {% if v.created_at %}
                       {{ v.created_at.strftime("%d.%m.%Y %H:%M") }}
                     {% else %}
-                      â€”
+                      —
                     {% endif %}
                   </td>
                   <td class="py-2 pr-4 text-[var(--ink-muted)]">
-                    {{ v.note or "â€”" }}
+                    {{ v.note or "—" }}
                   </td>
                   <td class="py-2 text-right">
                     <form method="post" action="/documents/{{ doc.id }}/restore-version-web" class="inline-flex">
                       <input type="hidden" name="version_id" value="{{ v.id }}">
                       <button
                         type="submit"
-                        class="text-xs font-medium text-sky-500 hover:text-sky-600 underline underline-offset-2"
+                        class="text-xs font-medium text-sky-600 hover:text-sky-700 underline underline-offset-2"
                       >
                         Wiederherstellen
                       </button>
@@ -307,7 +328,7 @@
         </div>
       {% else %}
         <div class="flex flex-col items-center justify-center py-14 text-center text-sm text-[var(--ink-muted)]">
-          <div class="mb-3 text-4xl">ðŸ“</div>
+          <div class="mb-3 text-4xl">📁</div>
           <div class="font-medium text-[var(--ink)] mb-1">Noch keine Versionen vorhanden.</div>
           <p class="text-xs text-[var(--ink-muted)]">
             Lade eine neue Version hoch, um die Historie dieses Dokuments aufzubauen.
@@ -319,4 +340,3 @@
 
 </div>
 {% endblock %}
-
