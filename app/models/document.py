@@ -1,4 +1,3 @@
-# app/models/document.py
 from __future__ import annotations
 
 from typing import Optional, List, TYPE_CHECKING
@@ -66,6 +65,13 @@ class Document(Base):
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    is_favorite: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        index=True,
+    )
+
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -91,7 +97,6 @@ class Document(Base):
         passive_deletes=True,
     )
 
-    # Many-to-Many Kategorien (ersetzt alte Single-Category Beziehung)
     categories: Mapped[List["Category"]] = relationship(
         "Category",
         secondary=document_categories,
@@ -130,22 +135,6 @@ class Document(Base):
     @sha256_hash.setter
     def sha256_hash(self, value: Optional[str]) -> None:
         self.checksum_sha256 = value
-
-    @property
-    def user_id(self) -> int:
-        return self.owner_user_id
-
-    @user_id.setter
-    def user_id(self, value: int) -> None:
-        self.owner_user_id = value
-
-    @property
-    def user(self) -> "User":
-        return self.owner
-
-    @user.setter
-    def user(self, value: "User") -> None:
-        self.owner = value
 
     def __repr__(self) -> str:
         return f"<Document id={self.id} filename={self.filename!r} size={self.size_bytes}B>"

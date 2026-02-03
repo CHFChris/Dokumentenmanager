@@ -1,10 +1,9 @@
-# app/models/user.py
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING, List
 
-from sqlalchemy import Integer, SmallInteger, String, Boolean, DateTime
+from sqlalchemy import BigInteger, SmallInteger, String, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     role_id: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
 
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
@@ -38,14 +37,12 @@ class User(Base):
         nullable=True,
     )
 
-    # NEU: Spracheinstellungen des Users
     language: Mapped[Optional[str]] = mapped_column(
         String(10),
         nullable=True,
         default="de",
     )
 
-    # NEU: MFA (2FA) Felder
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     mfa_method: Mapped[Optional[str]] = mapped_column(
         String(16),
@@ -53,8 +50,13 @@ class User(Base):
         default="email",
     )
 
-    # NEU: MFA Opt-Out (User kann MFA-Erzwingung ausnehmen)
     mfa_opt_out: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    dashboard_protected_view: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
 
     documents: Mapped[List["Document"]] = relationship(
         "Document",
@@ -77,7 +79,6 @@ class User(Base):
         lazy="selectin",
     )
 
-    # NEU: MFA Codes Relation
     mfa_codes: Mapped[List["MFACode"]] = relationship(
         "MFACode",
         back_populates="user",
@@ -85,14 +86,12 @@ class User(Base):
         lazy="selectin",
     )
 
-    # NEU: UI Benachrichtigungen (Toasts/Modals)
     ui_notifications_enabled: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
     )
 
-    # NEU: Sicherheitsmail bei Login auf neuem Gerät
     security_email_new_device_enabled: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -106,5 +105,6 @@ class User(Base):
             f"email={self.email!r} "
             f"role_id={self.role_id} "
             f"language={self.language!r} "
+            f"protected_dashboard={self.dashboard_protected_view} "
             f"verified={self.is_verified}>"
         )

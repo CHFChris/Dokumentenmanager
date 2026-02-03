@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import re
 import html
+import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
@@ -22,12 +23,17 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import OperationalError
+from sqlalchemy import select
 
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
 from app.core.config import settings
 from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
-from app.utils.crypto_utils import decrypt_text
+from app.utils.crypto_utils import (
+    decrypt_text,
+    compute_integrity_tag,
+    encrypt_bytes,
+)
 
 from app.services.auth_service import verify_login
 from app.services.document_service import (
@@ -60,10 +66,27 @@ from app.repositories.document_repo import (
 from app.models.user import User
 from app.models.category import Category
 from app.models.document import Document
+from app.models.document_version import DocumentVersion
 
 from app.services.auto_tagging import suggest_keywords_for_category
 
+from app.services.pending_upload_service import (
+    create_pending_upload,
+    get_pending_upload_for_user,
+    pending_meta,
+    delete_pending_upload,
+    commit_pending_to_new_version,
+)
+
+# -------------------------------------------------------------------
+# PATCH: Router-Einbindung fuer neue Web-Router
+# -------------------------------------------------------------------
+from app.web.routes_favorites import router as favorites_router
+from app.web.routes_dashboard_privacy import router as dashboard_privacy_router
+
 router = APIRouter()
+router.include_router(favorites_router)
+router.include_router(dashboard_privacy_router)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -178,6 +201,7 @@ def _search_rank_pack_docs(docs: list[Document], q: str) -> list[dict]:
                 "size": getattr(d, "size_bytes", 0) or 0,
                 "created_at": getattr(d, "created_at", None),
                 "categories": list(getattr(d, "categories", None) or []),
+                "is_favorite": bool(getattr(d, "is_favorite", False)),
             }
             for d in docs
         ]
@@ -236,6 +260,7 @@ def _search_rank_pack_docs(docs: list[Document], q: str) -> list[dict]:
             "categories": list(getattr(entry["doc"], "categories", None) or []),
             "last_updated": entry["last_upd"],
             "score": entry["score"],
+            "is_favorite": bool(getattr(entry["doc"], "is_favorite", False)),
         }
         for entry in ranked
     ]
@@ -298,8 +323,32 @@ def dashboard(
 ):
     stats = dashboard_stats(db, user.id)
 
-    docs_result = list_documents(db, user.id, q=None, limit=10, offset=0)
-    docs_list = getattr(docs_result, "items", docs_result)
+    db_user = db.query(User).filter(User.id == user.id).first()
+    protected_view = bool(getattr(db_user, "dashboard_protected_view", False)) if db_user else False
+
+    favorites: List[Document] = []
+
+    if protected_view:
+        try:
+            stats["recent_items"] = []
+        except Exception:
+            pass
+        docs_list = []
+    else:
+        docs_result = list_documents(db, user.id, q=None, limit=10, offset=0)
+        docs_list = getattr(docs_result, "items", docs_result)
+
+        favorites = (
+            db.query(Document)
+            .filter(
+                Document.owner_user_id == user.id,
+                Document.is_deleted == False,  # noqa: E712
+                Document.is_favorite == True,  # noqa: E712
+            )
+            .order_by(Document.id.desc())
+            .limit(6)
+            .all()
+        )
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -308,6 +357,8 @@ def dashboard(
             "user": user,
             "stats": stats,
             "docs": docs_list,
+            "favorites": favorites,
+            "dashboard_protected_view": protected_view,
             "q": "",
             "error": None,
             "active": "dashboard",
@@ -325,7 +376,6 @@ def profile_page(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user_web),
 ):
-    # Session-gebundenes ORM-User-Objekt fuer Template + Updates
     db_user = db.query(User).filter(User.id == user.id).first()
     if not db_user:
         return RedirectResponse(url="/auth/login-web", status_code=303)
@@ -335,7 +385,6 @@ def profile_page(
         {
             "request": request,
             "user": db_user,
-            # Falls dein Template diese Variablen verwendet
             "pw_error": None,
             "pw_success": None,
             "delete_error": None,
@@ -363,23 +412,39 @@ def category_keywords_page(
     )
 
 
-@router.get("/upload", response_class=HTMLResponse)
+# -------------------------------------------------------------------
+# UPLOAD (GET) - Context erweitert fuer Duplicate + Pending
+# -------------------------------------------------------------------
+@router.get("/upload", response_class=HTMLResponse, include_in_schema=False)
 def upload_page(
     request: Request,
-    user: CurrentUser = Depends(get_current_user_web),
-    db: Session = Depends(get_db),
+    duplicate: int = Query(0),
+    existing_id: int | None = Query(None),
+    pending: str | None = Query(None),
     error: Optional[str] = Query(None),
-    duplicate: Optional[int] = Query(None),
-    existing_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user_web),
 ):
     categories = list_categories_for_user(db, user.id)
 
-    dup_doc = None
-    if existing_id:
-        try:
-            dup_doc = get_document_for_user(db, user.id, int(existing_id))
-        except Exception:
-            dup_doc = None
+    existing_doc = None
+    pending_obj = None
+
+    if duplicate and existing_id:
+        existing_doc = db.execute(
+            select(Document)
+            .where(Document.id == existing_id)
+            .where(Document.owner_user_id == user.id)
+            .where(Document.is_deleted.is_(False))
+        ).scalar_one_or_none()
+
+    if pending:
+        pending_obj = get_pending_upload_for_user(
+            db,
+            user_id=user.id,
+            token=pending,
+            purpose="document_upload",
+        )
 
     return templates.TemplateResponse(
         "upload.html",
@@ -390,7 +455,8 @@ def upload_page(
             "categories": categories,
             "error": error,
             "duplicate": bool(duplicate),
-            "duplicate_doc": dup_doc,
+            "existing_doc": existing_doc,
+            "pending": pending_obj,
         },
     )
 
@@ -965,38 +1031,144 @@ def document_versions_page(
     )
 
 
+# -------------------------------------------------------------------
+# VERSION UPLOAD (NEU): Duplikate + Verschluesselung + Pending
+# -------------------------------------------------------------------
 @router.post("/documents/{doc_id}/upload-version-web", include_in_schema=False)
-def document_upload_version(
+async def upload_version_web(
+    request: Request,
     doc_id: int,
     file: UploadFile = File(...),
     note: str = Form(""),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user_web),
+    current_user: CurrentUser = Depends(get_current_user_web),
 ):
-    doc = get_document_for_user(db, user.id, doc_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    raw = await file.read()
+    if not raw:
+        return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
 
-    base_name = doc.filename or file.filename
-    target_path = _new_storage_path_for_version(user.id, base_name)
+    checksum = compute_integrity_tag(raw)
 
-    size_bytes = save_stream_to_file(file.file, target_path)
-    with open(target_path, "rb") as fh:
-        sha256_hex = sha256_of_stream(fh)
+    doc = db.execute(
+        select(Document)
+        .where(Document.id == doc_id)
+        .where(Document.owner_user_id == current_user.id)
+        .where(Document.is_deleted.is_(False))
+    ).scalar_one_or_none()
+    if doc is None:
+        return RedirectResponse(url="/documents", status_code=303)
 
-    mime = getattr(file, "content_type", None) or doc.mime_type
+    existing_ver = db.execute(
+        select(DocumentVersion)
+        .where(DocumentVersion.document_id == doc.id)
+        .where(DocumentVersion.checksum_sha256 == checksum)
+        .order_by(DocumentVersion.version_number.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
-    add_version(
-        db=db,
-        doc=doc,
-        storage_path=target_path,
-        size_bytes=size_bytes,
-        checksum_sha256=sha256_hex,
-        mime_type=mime,
-        note=note or "Uploaded new version",
+    if existing_ver is not None:
+        pu = create_pending_upload(
+            db,
+            user_id=current_user.id,
+            purpose="version_upload",
+            raw_bytes=raw,
+            original_filename=file.filename,
+            mime_type=file.content_type,
+            context_doc_id=doc.id,
+        )
+        return RedirectResponse(
+            url=f"/documents/{doc.id}?version_duplicate=1&pending={pu.token}&existing_version={existing_ver.version_number}",
+            status_code=303,
+        )
+
+    current_max = (
+        db.execute(
+            select(DocumentVersion.version_number)
+            .where(DocumentVersion.document_id == doc.id)
+            .order_by(DocumentVersion.version_number.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        or 0
     )
+    new_v = int(current_max) + 1
 
-    return RedirectResponse(url=f"/documents/{doc_id}/versions", status_code=303)
+    ext = ""
+    if file.filename:
+        _, ext = os.path.splitext(file.filename)
+        ext = ext.lower()
+
+    files_dir = getattr(settings, "FILES_DIR", "./data/files")
+    user_dir = os.path.join(files_dir, str(current_user.id))
+    ensure_dir(user_dir)
+
+    stored = uuid.uuid4().hex
+    target_path = os.path.join(user_dir, f"{doc.id}.v{new_v}.{stored}{ext}")
+
+    enc = encrypt_bytes(raw)
+    with open(target_path, "wb") as f:
+        f.write(enc)
+
+    ver = DocumentVersion(
+        document_id=doc.id,
+        version_number=new_v,
+        storage_path=target_path,
+        size_bytes=len(raw),
+        checksum_sha256=checksum,
+        mime_type=file.content_type,
+        note=(note or "Version Upload"),
+    )
+    db.add(ver)
+
+    doc.storage_path = target_path
+    doc.size_bytes = len(raw)
+    doc.checksum_sha256 = checksum
+    doc.mime_type = file.content_type
+    if file.filename:
+        doc.original_filename = file.filename
+
+    db.add(doc)
+    db.commit()
+
+    return RedirectResponse(url=f"/documents/{doc.id}", status_code=303)
+
+
+# -------------------------------------------------------------------
+# VERSION DUPLICATE: Commit / Discard
+# -------------------------------------------------------------------
+@router.post("/documents/{doc_id}/version-duplicate/commit", include_in_schema=False)
+def version_duplicate_commit(
+    request: Request,
+    doc_id: int,
+    token: str = Form(...),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user_web),
+):
+    pu = get_pending_upload_for_user(db, user_id=current_user.id, token=token, purpose="version_upload")
+    if pu is None or int(getattr(pu, "context_doc_id", 0) or 0) != int(doc_id):
+        return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
+
+    try:
+        commit_pending_to_new_version(db=db, user_id=current_user.id, token=token, note=note)
+    except ValueError:
+        return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
+
+    return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
+
+
+@router.post("/documents/{doc_id}/version-duplicate/discard", include_in_schema=False)
+def version_duplicate_discard(
+    request: Request,
+    doc_id: int,
+    token: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user_web),
+):
+    pu = get_pending_upload_for_user(db, user_id=current_user.id, token=token, purpose="version_upload")
+    if pu is not None:
+        delete_pending_upload(db, pu=pu)
+
+    return RedirectResponse(url=f"/documents/{doc_id}", status_code=303)
 
 
 @router.post("/documents/{doc_id}/restore-version-web", include_in_schema=False)
@@ -1047,7 +1219,6 @@ def security_info_page(
 # -------------------------------------------------------------------
 # MFA Enable/Disable (Web) - eindeutige URLs, keine JSON-Kollisionen
 # -------------------------------------------------------------------
-
 @router.post("/profile/mfa/disable", include_in_schema=False)
 async def profile_mfa_disable(
     request: Request,

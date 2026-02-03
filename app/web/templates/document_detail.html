@@ -24,16 +24,31 @@
     Zur Dokumentenübersicht
   </a>
 
-  <div>
-    <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)] mb-1">
-      Dokument
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div class="min-w-0">
+      <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)] mb-1">
+        Dokument
+      </div>
+      <h1 class="text-2xl font-semibold text-[var(--ink)] break-words">
+        {{ name }}
+      </h1>
+      <p class="mt-1 text-sm text-[var(--ink-muted)]">
+        Metadaten, Kategorien, Versionen und Aktionen.
+      </p>
     </div>
-    <h1 class="text-2xl font-semibold text-[var(--ink)] break-words">
-      {{ name }}
-    </h1>
-    <p class="mt-1 text-sm text-[var(--ink-muted)]">
-      Metadaten, Kategorien, Versionen und Aktionen.
-    </p>
+
+    {# --- PATCH: Favorit Stern Toggle im Dokumentdetail (POST) --- #}
+    <div class="flex flex-wrap gap-2">
+      <form method="post" action="/documents/{{ doc.id }}/favorite-toggle" style="display:inline;">
+        <button type="submit" class="btn" title="Favorit umschalten" aria-label="Favorit umschalten">
+          {% if doc.is_favorite %}
+            ★ Favorit
+          {% else %}
+            ☆ Favorit
+          {% endif %}
+        </button>
+      </form>
+    </div>
   </div>
 
   <div class="grid gap-5 lg:grid-cols-2">
@@ -230,6 +245,37 @@
           <div class="text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">
             Neue Version hochladen
           </div>
+
+          {# --- PATCH: Version-Duplikatbox anzeigen (oberhalb des Upload-Forms) --- #}
+          {% if request.query_params.get('version_duplicate') and request.query_params.get('pending') %}
+            <div class="rounded border p-4 mb-4">
+              <div class="font-semibold mb-2">Duplikat bei Version erkannt</div>
+
+              <div class="text-sm mb-2">
+                <div><strong>Bestehend:</strong> Version {{ request.query_params.get('existing_version') }}</div>
+                <div><strong>Neu:</strong> Pending Upload</div>
+              </div>
+
+              <div class="flex gap-2 mb-3">
+                <a class="btn" href="/documents/{{ doc.id }}">Aktuelles Dokument anzeigen</a>
+                <a class="btn" href="/upload/pending/{{ request.query_params.get('pending') }}/preview" target="_blank" rel="noopener">Neue Datei anzeigen</a>
+              </div>
+
+              <div class="flex gap-2 flex-wrap">
+                <form method="post" action="/documents/{{ doc.id }}/version-duplicate/commit">
+                  <input type="hidden" name="token" value="{{ request.query_params.get('pending') }}">
+                  <input type="hidden" name="note" value="Version Upload (Duplikat)">
+                  <button class="btn" type="submit">Als neue Version speichern</button>
+                </form>
+
+                <form method="post" action="/documents/{{ doc.id }}/version-duplicate/discard">
+                  <input type="hidden" name="token" value="{{ request.query_params.get('pending') }}">
+                  <button class="btn" type="submit">Neue Datei verwerfen</button>
+                </form>
+              </div>
+            </div>
+          {% endif %}
+
           <form
             method="post"
             action="/documents/{{ doc.id }}/upload-version-web"

@@ -1,4 +1,3 @@
-# app/api/routes/auth.py
 from __future__ import annotations
 
 import os
@@ -387,13 +386,15 @@ def login_submit(
         ua = request.headers.get("user-agent")
         try:
             row = mfa_service.create_and_send_login_code(db, int(user.id), user.email, ip, ua)
-        except RuntimeError:
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("2FA mail send failed")
             return templates.TemplateResponse(
                 "login.html",
                 {
                     "request": request,
                     "user": None,
-                    "error": "E-Mail-Versand nicht konfiguriert. Bitte Admin kontaktieren.",
+                    "error": "2FA E-Mail konnte nicht gesendet werden. Bitte SMTP (.env MAIL_*) pruefen.",
                     "bad_login": True,
                 },
                 status_code=503,

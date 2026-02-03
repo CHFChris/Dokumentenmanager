@@ -22,7 +22,7 @@ class DocumentVersion(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     document_id: Mapped[int] = mapped_column(
-        Integer,  # falls dein Document.id BigInteger ist, hier auch BigInteger!
+        BigInteger,  # falls dein Document.id BigInteger ist, hier auch BigInteger!
         ForeignKey("documents.id", ondelete="CASCADE"),
         index=True,
         nullable=False,

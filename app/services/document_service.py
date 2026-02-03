@@ -7,10 +7,9 @@ import mimetypes
 from datetime import datetime, timezone
 from io import BytesIO
 from tempfile import NamedTemporaryFile
-from typing import BinaryIO, Optional, List, Dict
+from typing import BinaryIO, Optional, List
 from urllib.parse import quote
 
-import sqlalchemy as sa
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
 from starlette.responses import StreamingResponse
@@ -29,6 +28,7 @@ from app.repositories.document_repo import (
     soft_delete_document,
     storage_used_for_user,
     update_document_name_and_path,
+    get_by_sha_or_name_size,  # NEU (Duplikatcheck)
 )
 from app.schemas.document import DocumentListOut, DocumentOut
 from app.services.auto_tagging import suggest_categories_for_document
@@ -40,7 +40,7 @@ from app.utils.crypto_utils import (
     encrypt_bytes,
     compute_integrity_tag,
 )
-from app.utils.files import ensure_dir, save_stream_to_file, sha256_of_stream
+from app.utils.files import ensure_dir, sha256_of_stream, save_stream_to_file  # noqa: F401
 
 # ------------------------------------------------------------
 # Konfiguration
@@ -100,11 +100,6 @@ def _tokenize(text: str) -> List[str]:
     return tokens
 
 
-def _score_document(title: str, body: str, query_tokens: List[str]) -> int:
-    if not query_tokens:
-        return 0
-
-
 def _category_ids(doc: Document) -> List[int]:
     cats = getattr(doc, "categories", None) or []
     out: List[int] = []
@@ -128,16 +123,6 @@ def _categories_to_string(doc: Document) -> Optional[str]:
     cats = getattr(doc, "categories", None) or []
     names = [c.name for c in cats if getattr(c, "name", None)]
     return ", ".join(names) if names else None
-
-
-def _category_ids(doc: Document) -> List[int]:
-    cats = getattr(doc, "categories", None) or []
-    out: List[int] = []
-    for c in cats:
-        cid = getattr(c, "id", None)
-        if isinstance(cid, int):
-            out.append(cid)
-    return out
 
 
 # ------------------------------------------------------------
@@ -382,6 +367,7 @@ def upload_document(
     file_obj: BinaryIO,
     content_type: Optional[str] = None,
     category_id: Optional[int] = None,
+    allow_duplicate: bool = False,  # NEU
 ) -> DocumentOut:
     """Upload ueber die /documents/upload-API.
 
@@ -418,6 +404,21 @@ def upload_document(
     # Hash (Integritaet) ueber Klartext
     integrity_tag = compute_integrity_tag(raw_bytes)
 
+    # NEU: Duplikatcheck nur wenn nicht erlaubt
+    if not allow_duplicate:
+        dup = get_by_sha_or_name_size(
+            db=db,
+            user_id=user_id,
+            sha256=integrity_tag,
+            filename=display_name,
+            size_bytes=size_bytes,
+        )
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "duplicate_detected", "existing_id": getattr(dup, "id", None)},
+            )
+
     # Verschluesseln + speichern
     encrypted_bytes = encrypt_bytes(raw_bytes)
 
@@ -448,29 +449,6 @@ def upload_document(
     )
 
     # (Legacy) Single-Kategorie setzen (wird als Many-to-Many gespeichert)
-    if category_id is not None:
-        cat = (
-            db.query(Category)
-            .filter(Category.user_id == user_id, Category.id == category_id)
-            .first()
-        )
-        if cat:
-            current = get_document_for_user(db, user_id, doc.id) or doc
-            existing_ids: List[int] = []
-            for c in (getattr(current, "categories", None) or []):
-                cid = getattr(c, "id", None)
-                if isinstance(cid, int):
-                    existing_ids.append(cid)
-
-            new_ids = list(dict.fromkeys(existing_ids + [cat.id]))
-
-            set_document_categories(
-                db,
-                doc_id=doc.id,
-                user_id=user_id,
-                category_ids=new_ids,
-            )
-
     if category_id is not None:
         cat = (
             db.query(Category)

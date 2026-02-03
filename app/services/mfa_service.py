@@ -1,6 +1,6 @@
-# app/services/mfa_service.py
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import smtplib
@@ -11,6 +11,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.mfa_code import MFACode
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -106,7 +108,17 @@ def create_and_send_login_code(
         f"User-Agent: {user_agent or '-'}\n"
     )
 
-    _send_email_smtp(user_email, subject, body)
+    # DEV-Fallback: Code im Terminal ausgeben (damit du nie ausgesperrt bist)
+    env = (os.getenv("APP_ENV", "") or "").lower()
+    if env in ("development", "dev", "local"):
+        logger.warning("[DEV] MFA login code for %s: %s", user_email, code)
+
+    try:
+        _send_email_smtp(user_email, subject, body)
+    except Exception:
+        logger.exception("MFA SMTP send failed (to=%s)", user_email)
+        raise
+
     return row
 
 
