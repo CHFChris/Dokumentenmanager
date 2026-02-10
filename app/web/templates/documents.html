@@ -218,21 +218,17 @@
 
                     <td class="px-3 py-2 align-middle">
                       <div class="flex items-start gap-2">
-                        {# --- PATCH: Favorit Stern Toggle (POST) --- #}
-                        <form method="post" action="/documents/{{ d.id }}/favorite-toggle" class="flex-none">
-                          <button
-                            type="submit"
-                            title="Favorit umschalten"
-                            aria-label="Favorit umschalten"
-                            class="text-base leading-none text-yellow-600 hover:text-yellow-700"
-                          >
-                            {% if d.is_favorite %}
-                              ★
-                            {% else %}
-                              ☆
-                            {% endif %}
-                          </button>
-                        </form>
+
+                        {# A) Stern-Button ersetzt (kein Form-Submit, nur Toggle per JS) #}
+                        <button
+                          type="button"
+                          class="fav-toggle{% if d.is_favorite %} is-favorite{% endif %}"
+                          data-doc-id="{{ d.id }}"
+                          aria-label="Favorit umschalten"
+                          title="{% if d.is_favorite %}Favorit entfernen{% else %}Als Favorit markieren{% endif %}"
+                        >
+                          {% if d.is_favorite %}★{% else %}☆{% endif %}
+                        </button>
 
                         <div class="min-w-0">
                           <a href="/documents/{{ d.id }}" class="text-sm font-medium text-gray-900 hover:underline">
@@ -337,6 +333,12 @@
   </section>
 </div>
 
+{# Optional CSS für den Stern-Button #}
+<style>
+  .fav-toggle { background: transparent; border: 0; padding: 0 6px; cursor: pointer; font-size: 16px; line-height: 1; }
+  .fav-toggle.is-favorite { font-weight: 700; }
+</style>
+
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const selectAll = document.getElementById("select-all-docs");
@@ -371,5 +373,38 @@
       });
     });
   });
+</script>
+
+{# B) Script am Ende: Favorit per Fetch toggeln (ohne Kategorien-Auswahl) #}
+<script>
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".fav-toggle");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const docId = btn.getAttribute("data-doc-id");
+  try {
+    const resp = await fetch(`/documents/${docId}/favorite/toggle`, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    });
+
+    if (!resp.ok) return;
+
+    const data = await resp.json();
+    const isFav = !!data.is_favorite;
+
+    btn.textContent = isFav ? "★" : "☆";
+    btn.classList.toggle("is-favorite", isFav);
+    btn.title = isFav ? "Favorit entfernen" : "Als Favorit markieren";
+  } catch (_) {
+    return;
+  }
+});
 </script>
 {% endblock %}

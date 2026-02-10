@@ -103,7 +103,7 @@ def get_pending_upload_for_user(
     )
     if purpose:
         # BUGFIX: in deinem Code stand "kind" - du verwendest aber "purpose"
-        stmt = stmt.where(PendingUpload.purpose == purpose)
+        stmt = stmt.where(PendingUpload.kind == purpose)
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -142,41 +142,25 @@ def pending_as_uploadfile(pu: PendingUpload) -> StarletteUploadFile:
     )
 
 
-def _call_upload_document(
-    db: Session,
-    *,
-    user_id: int,
-    pu: PendingUpload,
-    allow_duplicate: bool,
-):
-    from app.services.document_service import upload_document
+def _call_upload_document(db: Session, *, user_id: int, file: StarletteUploadFile, allow_duplicate: bool):
+    """
+    Adapter: passt Pending-Upload (UploadFile) an die echte Signatur von document_service.upload_document an.
+    In deinem Projekt: upload_document(db, user_id, original_name, file_obj, content_type=None, ..., allow_duplicate=False)
+    """
+    from app.services.document_service import upload_document as fn
 
-    raw = read_pending_bytes(pu)
-    bio = BytesIO(raw)
+    original_name = getattr(file, "filename", None) or "upload.bin"
+    file_obj = getattr(file, "file", None)  # BytesIO bei Pending
+    content_type = getattr(file, "content_type", None)
 
-    original_name = (pu.original_filename or "upload.bin").strip() or "upload.bin"
-    content_type = (pu.mime_type or "application/octet-stream").split(";")[0].strip()
-
-    # Primär-Signatur (dein Fehler zeigt: original_name + file_obj sind Pflicht)
-    try:
-        return upload_document(
-            db=db,
-            user_id=user_id,
-            file_obj=bio,
-            original_name=original_name,
-            content_type=content_type,
-            allow_duplicate=allow_duplicate,
-        )
-    except TypeError:
-        # Falls dein upload_document statt user_id owner_user_id nutzt
-        return upload_document(
-            db=db,
-            owner_user_id=user_id,
-            file_obj=bio,
-            original_name=original_name,
-            content_type=content_type,
-            allow_duplicate=allow_duplicate,
-        )
+    return fn(
+        db=db,
+        user_id=user_id,
+        original_name=original_name,
+        file_obj=file_obj,
+        content_type=content_type,
+        allow_duplicate=allow_duplicate,
+    )
 
 
 def _call_remove_document(db: Session, *, user_id: int, document_id: int):
@@ -239,7 +223,9 @@ def commit_pending_to_new_document(
     if pu is None:
         raise ValueError("PENDING_NOT_FOUND")
 
-    doc = _call_upload_document(db, user_id=user_id, pu=pu, allow_duplicate=allow_duplicate)
+    file = pending_as_uploadfile(pu)
+    doc = _call_upload_document(db, user_id=user_id, file=file, allow_duplicate=allow_duplicate)
+
     delete_pending_upload(db, pu=pu)
     return doc
 
@@ -340,6 +326,8 @@ def replace_old_document_with_pending(
 
     _call_remove_document(db, user_id=user_id, document_id=existing_document_id)
 
-    doc = _call_upload_document(db, user_id=user_id, pu=pu, allow_duplicate=True)
+    file = pending_as_uploadfile(pu)
+    doc = _call_upload_document(db, user_id=user_id, file=file, allow_duplicate=True)
+
     delete_pending_upload(db, pu=pu)
     return doc

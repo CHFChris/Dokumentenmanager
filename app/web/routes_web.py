@@ -446,6 +446,8 @@ def upload_page(
             purpose="document_upload",
         )
 
+    # FIX: upload.html erwartet "pending_upload".
+    # Rueckwaertskompatibel: sowohl "pending_upload" als auch "pending" setzen.
     return templates.TemplateResponse(
         "upload.html",
         {
@@ -456,6 +458,7 @@ def upload_page(
             "error": error,
             "duplicate": bool(duplicate),
             "existing_doc": existing_doc,
+            "pending_upload": pending_obj,
             "pending": pending_obj,
         },
     )

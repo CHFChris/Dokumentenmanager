@@ -1,3 +1,4 @@
+# app/web/routes_favorites.py
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user_web, CurrentUser
 from app.db.database import get_db
 from app.services.favorite_service import toggle_favorite, set_favorite, list_favorite_documents
+from app.services.audit_log_service import log_event_safe
 
 router = APIRouter()
 
@@ -22,6 +24,18 @@ def web_toggle_favorite_alias(
         doc = toggle_favorite(db, document_id=document_id, owner_user_id=current_user.id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+
+    # Audit-Log: Favorit toggeln (success)
+    log_event_safe(
+        db,
+        actor_user_id=current_user.id,
+        action="document.favorite.toggle",
+        entity_type="document",
+        entity_id=doc.id,
+        outcome="success",
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
 
     accept = request.headers.get("accept", "")
     if "application/json" in accept.lower() or request.headers.get("x-requested-with"):
@@ -42,6 +56,18 @@ def web_toggle_favorite(
         doc = toggle_favorite(db, document_id=document_id, owner_user_id=current_user.id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+
+    # Audit-Log: Favorit toggeln (success)
+    log_event_safe(
+        db,
+        actor_user_id=current_user.id,
+        action="document.favorite.toggle",
+        entity_type="document",
+        entity_id=doc.id,
+        outcome="success",
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
 
     accept = request.headers.get("accept", "")
     if "application/json" in accept.lower() or request.headers.get("x-requested-with"):
@@ -68,6 +94,18 @@ def web_set_favorite(
         )
     except ValueError:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+
+    # Audit-Log: Favorit explizit setzen (success)
+    log_event_safe(
+        db,
+        actor_user_id=current_user.id,
+        action="document.favorite.set",
+        entity_type="document",
+        entity_id=doc.id,
+        outcome="success",
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
 
     accept = request.headers.get("accept", "")
     if "application/json" in accept.lower() or request.headers.get("x-requested-with"):

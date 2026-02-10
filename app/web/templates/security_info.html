@@ -1,167 +1,85 @@
+{# app/web/templates/security_info.html (oder Template, das /security-info rendert) #}
 {% extends "base.html" %}
-
 {% block title %}Sicherheitskriterien & Datenschutz{% endblock %}
 
 {% block content %}
-<div class="container mx-auto max-w-4xl py-8 px-4">
+<div class="mx-auto max-w-5xl px-4 py-6 space-y-6">
 
-  <div class="rounded-2xl border bg-white dark:bg-gray-900 shadow-sm px-6 py-6 lg:px-8 lg:py-8">
-    <div class="mb-6">
-      <h1 class="text-2xl font-semibold tracking-tight mb-2">
-        Sicherheitskriterien & Datenschutz
-      </h1>
-      <p class="text-sm text-gray-600 dark:text-gray-300 max-w-2xl">
-        Diese Seite beschreibt die technischen und organisatorischen Maßnahmen der Anwendung.
-        Sie dient als Informationsquelle für Nutzer und als zusammenfassende Dokumentation
-        für Lehrkräfte.
-      </p>
-    </div>
-
-    <!-- Passwortsicherheit -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          1
-        </span>
-        Passwortsicherheit
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>Passwort-Policy bei Registrierung und Reset:</li>
-        <li class="pl-4">• Mindestens 8 Zeichen</li>
-        <li class="pl-4">• Mindestens 1 Zahl</li>
-        <li class="pl-4">• Mindestens 1 Sonderzeichen (z.B. !?*$)</li>
-        <li>Passwörter werden ausschließlich gehasht gespeichert (bcrypt).</li>
-        <li>Keine Speicherung von Klartext-Passwörtern in der Datenbank oder in Logs.</li>
-        <li>Passwortänderung nur mit Eingabe des aktuellen Passworts.</li>
-      </ul>
-    </section>
-
-    <!-- Konto & Authentifizierung -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          2
-        </span>
-        Konto & Authentifizierung
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>E-Mail-Verifizierung beim Anlegen neuer Konten (Bestätigungslink).</li>
-        <li>Token-basierter Passwort-Reset mit zeitlich begrenztem Link (1 Stunde gültig).</li>
-        <li>Token-basierte Authentifizierung (JWT) für API-Zugriffe.</li>
-        <li>Session-basierte Web-Anmeldung für das Dashboard.</li>
-        <li>Anmeldung über E-Mail oder Benutzername, jeweils eindeutig pro Konto.</li>
-        <li>Konto-Löschung mit Passwortbestätigung und expliziter Einwilligung im Profilbereich.</li>
-      </ul>
-    </section>
-
-    <!-- Zugriffskontrolle -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          3
-        </span>
-        Zugriffskontrolle
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>Jeder Nutzer sieht ausschließlich seine eigenen Dokumente.</li>
-        <li>Filter auf Datenbankebene nach Benutzer-ID bei allen Dokument-Abfragen.</li>
-        <li>Alle Dokument-Downloads und Vorschauen sind an eine erfolgreiche Authentifizierung gebunden.</li>
-        <li>Keine öffentlichen Direkt-Links zu Dateien; Auslieferung immer über geschützte Endpunkte.</li>
-      </ul>
-    </section>
-
-    <!-- Dokumentensicherheit & Verschlüsselung -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          4
-        </span>
-        Dokumentensicherheit & Verschlüsselung
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>Separates Datei-Verzeichnis pro Nutzer (Isolation auf Dateisystemebene).</li>
-        <li>Verschlüsselte Ablage der hochgeladenen Dokumente (symmetrische Verschlüsselung, Entschlüsselung nur zur Laufzeit über die Anwendung).</li>
-        <li>Hashing aller Dateien mit SHA256 zur Integritätsprüfung.</li>
-        <li>Bereinigung von Dateinamen, um Pfadmanipulationen zu verhindern.</li>
-        <li>Datei-Versionierung:
-          <span class="block pl-4">
-            • neue Versionen erhalten eigene Speicherpfade<br>
-            • Übersicht über alle Versionen mit Zeitstempel und Größe<br>
-            • Wiederherstellung einer älteren Version über die Versionsverwaltung
-          </span>
-        </li>
-      </ul>
-    </section>
-
-    <!-- OCR & Volltextsuche -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          5
-        </span>
-        OCR-Verarbeitung & Volltextsuche
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>OCR-Text wird lokal erzeugt und in der Datenbank verschlüsselt gespeichert.</li>
-        <li>Volltextsuche kombiniert Dateiname und entschlüsselten OCR-Inhalt.</li>
-        <li>Suchanfragen sind immer an den angemeldeten Benutzer gebunden (kein Cross-User-Zugriff).</li>
-        <li>Schlagwörter für Kategorien können aus OCR-Texten vorgeschlagen werden (Auto-Tagging), die Übernahme entscheidet der Nutzer selbst.</li>
-      </ul>
-    </section>
-
-    <!-- Datenschutz & Datensparsamkeit -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          6
-        </span>
-        Datenschutz & Datensparsamkeit
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>Datenverarbeitung findet ausschließlich lokal im System der Schule bzw. im Demo-Setup statt.</li>
-        <li>Keine automatische Übermittlung von Dokumenten oder Inhalten an externe Cloud-Services.</li>
-        <li>Speicherung nur der notwendigen Stammdaten:
-          <span class="block pl-4">
-            • Name / Anzeigename<br>
-            • E-Mail-Adresse<br>
-            • Zugangsdaten (gehasht)<br>
-            • Benutzer-Dokumente inkl. Kategorien, Versionen und OCR-Text
-          </span>
-        </li>
-        <li>Logische Trennung der Benutzerkonten in der Datenbank (jede Operation mit Benutzer-ID verknüpft).</li>
-      </ul>
-    </section>
-
-    <!-- Protokollierung & Fehlerbehandlung -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          7
-        </span>
-        Protokollierung & Fehlerbehandlung
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>Technische Logs (z.B. Server-Requests, Fehler) enthalten keine Dokumentinhalte.</li>
-        <li>Fehlermeldungen im Frontend sind bewusst allgemein gehalten und zeigen keine sensiblen Details.</li>
-        <li>Uploads werden validiert (Größe, MIME-Typ, Dateiname), um Fehlbedienung und typische Angriffsvektoren zu reduzieren.</li>
-      </ul>
-    </section>
-
-    <!-- Nutzerkontrolle & Transparenz -->
-    <section class="border-t border-gray-200 dark:border-gray-800 pt-5 mt-4">
-      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 text-xs dark:bg-blue-900/40">
-          8
-        </span>
-        Nutzerkontrolle & Transparenz
-      </h2>
-      <ul class="text-sm text-gray-700 dark:text-gray-200 space-y-1.5">
-        <li>Profilseite mit Anpassung von Name, Sprache, E-Mail-Adresse und Passwort.</li>
-        <li>Konto kann durch den Nutzer selbst inklusive aller Dokumente endgültig gelöscht werden.</li>
-        <li>Farbschema und Design-Einstellungen werden ausschließlich lokal im Browser des Nutzers gespeichert (Local Storage, keine Übertragung zum Server).</li>
-      </ul>
-    </section>
-
+  <div>
+    <h1 class="text-2xl font-semibold">Sicherheitskriterien & Datenschutz</h1>
+    <p class="text-sm text-[var(--ink-muted)] mt-2">
+      Diese Seite beschreibt die wichtigsten Maßnahmen in dieser Anwendung: Schutz der Konten, Zugriff nur auf eigene Daten
+      und sichere Dokumentverarbeitung im lokalen Setup.
+    </p>
   </div>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">1) Passwortsicherheit</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>Passwörter werden nicht im Klartext gespeichert, sondern als sicherer Hash abgelegt.</li>
+      <li>Die Anwendung verarbeitet Passwörter ausschließlich im Rahmen von Login und Passwortänderung, nicht als Klartextspeicherung.</li>
+    </ul>
+  </section>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">2) Anmeldung & Zwei-Faktor-Authentifizierung (2FA)</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>Der Zugriff auf geschützte Bereiche ist nur nach erfolgreicher Anmeldung möglich.</li>
+      <li>Optional kann 2FA aktiviert werden: Nach dem Passwort wird ein zusätzlicher Code per E-Mail abgefragt.</li>
+    </ul>
+  </section>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">3) Rollen & Zugriffskontrolle</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>Die Anwendung verwendet Rollen (z. B. System und Mitarbeiter), um Berechtigungen zu steuern.</li>
+      <li>Dokumentlisten, Dokumentdetails sowie Aktionen (z. B. Upload, Versionen, Löschen/Wiederherstellen) sind an die Anmeldung gebunden.</li>
+      <li>Datenzugriffe sind benutzerbezogen: Dokumentabfragen werden so gefiltert, dass nur eigene Dokumente sichtbar sind.</li>
+    </ul>
+  </section>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">4) Dokumentensicherheit (Speicherung, Hash, Duplikate)</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>Dokumentdateien werden vor dem Speichern verschlüsselt abgelegt (Verschlüsselung „at rest“).</li>
+      <li>Für Integrität und Duplikaterkennung wird ein SHA-256-Hash des Dateiinhalt(s) verwendet.</li>
+      <li>Bei erkannten Duplikaten erhältst du eine klare Auswahl, wie mit der neuen Datei umgegangen werden soll (z. B. zusätzlich speichern oder ersetzen).</li>
+    </ul>
+  </section>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">5) Versionen & Papierkorb</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>Versionierung: Änderungen/Neu-Uploads können als neue Versionen gespeichert werden, sodass frühere Stände erhalten bleiben.</li>
+      <li>Papierkorb: Löschen erfolgt als Soft-Delete (Wiederherstellung möglich); endgültiges Löschen erfolgt separat.</li>
+    </ul>
+  </section>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">6) OCR & Volltext</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>OCR wird lokal im System ausgeführt (keine automatische Übertragung von Dokumentinhalten an Cloud-Dienste).</li>
+      <li>Erkannter Text kann für Suche und Kategorisierung genutzt werden.</li>
+      <li>Kategorien bleiben für dich kontrollierbar: Du kannst Zuordnungen manuell setzen oder anpassen.</li>
+    </ul>
+  </section>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">7) Datenschutz & Datensparsamkeit</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>Die Verarbeitung findet im lokalen Schul-/Demo-Setup statt.</li>
+      <li>Es gibt keine automatische Übertragung von Dokumentinhalten an externe Cloud-Services.</li>
+      <li>Gespeichert werden nur für den Betrieb notwendige Daten: Kontodaten, Authentifizierungsdaten (Hash), Dokumentmetadaten, Kategorien/Versionen sowie optional OCR-Text.</li>
+    </ul>
+  </section>
+
+  <section class="rounded border p-4 space-y-2">
+    <h2 class="font-semibold">8) Logs & Fehlerbehandlung</h2>
+    <ul class="list-disc pl-5 text-sm space-y-1">
+      <li>Technische Logs unterstützen die Fehleranalyse und können technische Metadaten (z. B. Fehlercodes) enthalten.</li>
+      <li>Fehlermeldungen im Frontend sind bewusst knapp gehalten, um keine sensiblen internen Details preiszugeben.</li>
+    </ul>
+  </section>
+
 </div>
 {% endblock %}
